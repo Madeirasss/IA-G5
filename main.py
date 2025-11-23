@@ -6,6 +6,7 @@ from ev3dev2.sensor.lego import UltrasonicSensor, ColorSensor, TouchSensor, Gyro
 from ev3dev2.console import Console
 from ev3dev2.sound import Sound
 import sys
+import random
 
 #definir inputs e outputs
 sensor_ultrassonico = UltrasonicSensor(INPUT_3)
@@ -376,6 +377,108 @@ def turnos_do_jogo():
     if defender_vida_atual > 0:
         print("\n--- VITORIA! ---")
         print("Sobreviveste aos 13 turnos!")
+
+#Função de ataque inimigo (não foi testada ainda, pode conter erros)
+def ataque inimigo():
+    inimigo_atacou = False
+    dano_total_neste_turno = 0 # Acumulador de dano
+
+    for slot_id, info in slots_inimigos.items():
+        
+        # 1. Verifica se é o turno deste slot E se o inimigo está VIVO
+        if info['turno_ataque'] == turno_atual and info['vida_atual'] > 0:
+            
+            inimigo_atacou = True
+            tipo_inimigo = info['tipo']
+            
+            # 2. Vai buscar os dados do inimigo
+            dados_inimigo = INIMIGOS[tipo_inimigo]
+            dano_por_ataque = dados_inimigo['forca']
+            num_ataques = dados_inimigo['ataques'] # A REGRA QUE FALTAVA
+            
+            print("ATAQUE! O ")
+            print(tipo_inimigo)
+            print(" no slot ")
+            print(slot_id)
+            print(" ataca ") 
+            print(num_ataques) 
+            print("vez(es)!")
+            
+            # 3. Executa os ataques (um por um)
+            for i in range(num_ataques):
+                # i vai de 0 até (num_ataques - 1)
+                print(f"  -> Ataque {i+1}/{num_ataques}: Dano de {dano_por_ataque}!")
+                dano_total_neste_turno += dano_por_ataque
+                # (Podes adicionar um som.beep() aqui para cada hit)
+            
+            som.speak("Dano recebido", espeak_opts='-v pt')
+    
+    # 4. Aplica o dano total ao Defender-bot
+    if inimigo_atacou:
+        print("DANO TOTAL RECEBIDO NESTE TURNO: ")
+        orint(dano_total_neste_turno)
+        # Aplica o dano total ao Defender-bot
+        defender_vida_atual -= dano_total_neste_turno
+    else:
+        print("Nenhum inimigo (vivo) atacou neste turno.")
+
+#Função para sortear os inimigos e quais rounds colocar os mesmos no tabuleiro(ainda não testada)
+def sortear_inimigos_com_dados():
+
+    #Simula o lançamento de dados para configurar o tabuleiro.
+    #Define Tipo, Slot e Turno aleatoriamente.
+    #O robô diz ao utilizador onde colocar as peças.
+    global slots_inimigos
+    global INIMIGOS
+    
+    print("\n--- A SORTEAR INIMIGOS (DADOS VIRTUAIS) ---")
+    
+    # Lista de slots disponíveis. À medida que escolhemos, removemos da lista.
+    slots_disponiveis = [1, 2, 3, 4, 5, 6]
+    
+    # Vamos criar 6 inimigos (a força atacante tem 6 unidades)
+    for i in range(6):
+        
+        print("\n--- Sorteio da Unidade ---")
+        print(i+1)
+        # 1. Rolar Dado para o TIPO (1 a 6)
+        dado_tipo = random.randint(1, 6)
+        
+        if dado_tipo <= 2:    # 1 ou 2
+            tipo = "Tanque"
+        elif dado_tipo <= 4:  # 3 ou 4
+            tipo = "Artilharia"
+        else:                 # 5 ou 6
+            tipo = "Infantaria"
+            
+        # 2. Rolar Dado para o TURNO (1 a 6)
+        dado_turno = random.randint(1, 6)
+        
+        # 3. Escolher um SLOT LIVRE (sem repetição)
+        # O random.choice escolhe um da lista
+        slot_escolhido = random.choice(slots_disponiveis)
+        # Removemos da lista para não voltar a sair
+        slots_disponiveis.remove(slot_escolhido)
+        
+        # 4. Guardar na memória do Robô
+        vida_inicial = INIMIGOS[tipo]['vida']
+        
+        slots_inimigos[slot_escolhido]['tipo'] = tipo
+        slots_inimigos[slot_escolhido]['vida_atual'] = vida_inicial
+        slots_inimigos[slot_escolhido]['turno_ataque'] = dado_turno
+        
+        # 5. INSTRUIR O JOGADOR
+        print("Coloca ") 
+        print(tipo)
+        print(" no Slot ") 
+        print(slot_escolhido)
+        print("Turno ") 
+        print(dado_turno)
+
+
+
+
+
 
 def main():
     #som.play_file("cbaec71a.wav") #play ao som do max verstappen
