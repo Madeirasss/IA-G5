@@ -407,7 +407,7 @@ def ataque inimigo():
             # 3. Executa os ataques (um por um)
             for i in range(num_ataques):
                 # i vai de 0 até (num_ataques - 1)
-                print(f"  -> Ataque {i+1}/{num_ataques}: Dano de {dano_por_ataque}!")
+                #print(f"  -> Ataque {i+1}/{num_ataques}: Dano de {dano_por_ataque}!")
                 dano_total_neste_turno += dano_por_ataque
                 # (Podes adicionar um som.beep() aqui para cada hit)
             
