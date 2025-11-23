@@ -1,3 +1,4 @@
+#imports
 from ev3dev2.motor import MoveTank, OUTPUT_D, OUTPUT_B, SpeedPercent, OUTPUT_C, MediumMotor
 from time import sleep
 from ev3dev2.sensor import INPUT_4, INPUT_3, INPUT_1, INPUT_2
@@ -6,6 +7,7 @@ from ev3dev2.console import Console
 from ev3dev2.sound import Sound
 import sys
 
+#definir inputs e outputs
 sensor_ultrassonico = UltrasonicSensor(INPUT_3)
 sensor_toque = TouchSensor(INPUT_2)
 sensor_cor = ColorSensor(INPUT_1)
@@ -15,15 +17,16 @@ sensor_giro = GyroSensor(INPUT_4)
 som = Sound()
 
 
-
+#Definir variaveis do jogo
 defender_vida_max = 750
 defender_vida_atual = 750
 defender_energia_max = 500
 defender_energia_atual = 500
 
-energia_a_recuperar_prox_turno = 0 # (Para a regra da cura)
-vida_a_recuperar_prox_turno = 0
+energia_a_recuperar_prox_turno = 0 #Para calculo de energia a recuperar no proximo turno
+vida_a_recuperar_prox_turno = 0 #Para calculo de vida a recuperar no proximo turno
 
+#Dicionarios com dados dos ataques, curas e inimigos
 ATAQUES = {
     'grua': {'dano': 100, 'custo_en': 300},
     'toque': {'dano': 200, 'custo_en': 150},
@@ -42,6 +45,7 @@ INIMIGOS = {
     'Infantaria': {'forca': 100, 'ataques': 3, 'vida': 100}
 }
 
+#Função para confirmar a inicialização do robo
 def confirmar_inicialização():
     print("--- ROBO INICIALIZADO ---")
     print("VIDA: ")
@@ -52,6 +56,7 @@ def confirmar_inicialização():
     print(defender_energia_max)
 
 #Função para calcular o angulo de giro com o sensor giroscopico
+#Ela apenas está definida para caso de debugging, se necessário, não está a ser chamada em nenhum lugar
 def calcular_angulo_giro():
     sensor_giro.reset()
     angulo = sensor_giro.angle
@@ -60,6 +65,8 @@ def calcular_angulo_giro():
     print(" graus")
 
 #Função para detetar a cor com o sensor de cor
+#Função apenas está definida para caso de debugging, se necessário, não está a ser chamada em nenhum lugar
+#Podem usar para ver as cores detetadas pelo sensor no tabuleiro, precisamos ver se o sensor está numa altura fixe
 def detetar_cor():
     color_id = sensor_cor.color
     color_name = ""
@@ -87,13 +94,16 @@ def detetar_cor():
     print(color_name)
 
 #Função para medir a distancia com o sensor ultrassonico
+#Função apenas está definida para caso de debugging, se necessário, não está a ser chamada em nenhum lugar
 def distancia():
     distancia_cm = sensor_ultrassonico.distance_centimeters
     print("Distancia: ")
     print(distancia_cm)
     print(" cm")
 
+
 #Função para verificar o estado do sensor de toque
+#Função apenas está definida para caso de debugging, se necessário, não está a ser chamada em nenhum lugar
 def sensor_toque_estado():
     if sensor_toque.is_pressed:
         print("Estado: PRESSIONADO!")
@@ -102,12 +112,13 @@ def sensor_toque_estado():
         print("Estado: Nao pressionado.")
         return 0
 
-#Função para emitir som
+#Função para emitir som (max verstappen) e para ele falar
+#Função apenas está definida para caso de debugging, se necessário, não está a ser chamada em nenhum lugar
 def usar_som():
     Sound().play_file('cbaec71a.wav',50)
     Sound().speak("Ola, eu sou o fogueirinha", espeak_opts='-v pt')
 
-
+#Função de ataque com a grua, confirma se tem energia suficiente para atacar
 def atacar_com_grua():
     global defender_energia_atual
     custo = ATAQUES['grua']['custo_en']#vai buscar o custo do ataque com grua
@@ -116,37 +127,38 @@ def atacar_com_grua():
     print("A tentar 'Ataque com Grua' Custo:")
     print(custo)
 
-    if defender_energia_atual >= custo:
+    if defender_energia_atual >= custo: #confirma se tem energia suficiente
         print("Energia OK. A procurar alvo (a andar para a frente)...")
-        movimento.on(SpeedPercent(30), SpeedPercent(30))
+        movimento.on(SpeedPercent(30), SpeedPercent(30))#anda para a frente
         # Continua a andar até o sensor ultrassonico detetar um objeto a menos de 10 cm
-        while sensor_ultrassonico.distance_centimeters > 10:
+        while sensor_ultrassonico.distance_centimeters > 10: #fica sempre a dar print da distancia que ta de um objeto
             dist = sensor_ultrassonico.distance_centimeters
             print("Distancia: ")
             print(dist)
             sleep(0.05) 
 
         print("\nAlvo encontrado! A parar.")
-        movimento.stop()
+        movimento.stop()#o robo pára para atacar o alvo
         
         print("A ATACAR!")
-        movimento.on_for_seconds(SpeedPercent(-30), SpeedPercent(30), 3) # Vira
-        sleep(0.5) 
+        movimento.on_for_seconds(SpeedPercent(-30), SpeedPercent(30), 3) #faz um 180º
+        sleep(0.5) #pára durante 0.5 seg para não bugar de os comandos sempre rápidos
         motor_medio.on_for_seconds(SpeedPercent(100), 1.5) # Ataca com a grua
         
         print("Ataque concluido.")
-        # Reduz a energia do defensor
+        # Reduz a energia do robô
         defender_energia_atual -= custo
         print("Ataque bem sucedido! Energia restante: ")
         print(defender_energia_atual)
-        
+        #dá print na energia restante
         return dano
         
     else:
-        print("FALHOU! Energia insuficiente.")
+        print("FALHOU! Energia insuficiente.")#caso não tenha energia suficiente
         som.beep() 
         return 0 
 
+#Função de ataque com toque
 def atacar_com_toque():    
     global defender_energia_atual 
     
@@ -156,18 +168,19 @@ def atacar_com_toque():
     print("A tentar 'Ataque com Toque' (Custo: ")
     print(custo)
     
-    if defender_energia_atual >= custo:
+    if defender_energia_atual >= custo: #verifica se tem energia suficiente
 
         print("Energia OK. A procurar alvo (< 15cm)...")
         movimento.on(SpeedPercent(40), SpeedPercent(40)) 
 
-        while sensor_ultrassonico.distance_centimeters > 15:
+        while sensor_ultrassonico.distance_centimeters > 15:#procura o alvo a menos de 15 cm
             dist = sensor_ultrassonico.distance_centimeters
+            #dá print da distancia ao alvo
             print("A aproximar... Dist: ")
             print(dist)
             sleep(0.05) 
             
-            if sensor_toque.is_pressed:
+            if sensor_toque.is_pressed: # se o sensor de toque for pressionado inesperadamente, ele pára
                 print("Obstaculo atingido inesperadamente!")
                 break 
 
@@ -176,11 +189,12 @@ def atacar_com_toque():
 
         while not sensor_toque.is_pressed:
             dist = sensor_ultrassonico.distance_centimeters
+            #dá print da distancia ao alvo
             print("A avancar para o toque... Dist: ")
             print(dist)
             sleep(0.05)
             
-            if dist > 30: 
+            if dist > 30: # se o algo estiver a mais de 30 cm, ele consigera como se tivesse fugido
                 print("Alvo fugiu durante a aproximacao final!")
                 movimento.stop()
                 return 0 
@@ -188,23 +202,25 @@ def atacar_com_toque():
         movimento.stop()
         print("\nALVO ATINGIDO! (Toque)")
         
-        som.play_tone(150, 0.2)
+        som.play_tone(150, 0.2)# dá um som se for atingido
         
+        #anda para tras depois do toque (pode não tar a funcionar por ser 0.5 seg)
         movimento.on_for_seconds(SpeedPercent(-30), SpeedPercent(-30), 0.5)
         
         print("Ataque de toque concluido.")
         
-        defender_energia_atual -= custo
+        defender_energia_atual -= custo #reduz a energia do robo
         print("Ataque bem sucedido! Energia restante: ")
         print(defender_energia_atual)
         
         return dano
         
     else:
-        print("FALHOU! Energia insuficiente.")
+        print("FALHOU! Energia insuficiente.")#caso não tenha energia suficiente
         som.beep() 
         return 0
 
+#Função que faz o ataque com som
 def atacar_com_som():
     global defender_energia_atual
     
@@ -213,20 +229,21 @@ def atacar_com_som():
     
     print("A tentar 'Ataque com Som' (Custo: ")
     print(custo)
-
-    if defender_energia_atual >= custo:
-        defender_energia_atual -= custo
+    
+    if defender_energia_atual >= custo: #verifica se tem energia suficiente
+        defender_energia_atual -= custo #reduz a energia do robo
         
-        som.beep()
+        som.beep()# realiza o ataque com som
         print("Ataque bem sucedido! Energia restante: ")
         print(defender_energia_atual)
         
         return dano
     else:
-        print("FALHOU! Energia insuficiente.")
+        print("FALHOU! Energia insuficiente.") #caso não tenha energia suficiente
         som.beep() 
         return 0
 
+#Função para usar as curas no menu
 def usar_cura(numero_da_cura):
     global defender_energia_atual
     global defender_vida_atual
@@ -248,21 +265,22 @@ def usar_cura(numero_da_cura):
     recupera = CURAS[key]['recupera']
     
     print("A tentar 'Cura " )
-    print(numero_da_cura)
+    print(numero_da_cura) 
     print("Custo: ")
     print(custo)
     print("EN, Recupera: ")
     print(recupera)
+    #verifica se tem enregia suficiente para curar-se
     if defender_energia_atual >= custo:
         defender_energia_atual -= custo
         
         defender_vida_atual += recupera
         
-        if defender_vida_atual > defender_vida_max:
+        if defender_vida_atual > defender_vida_max: #verifica se ele curou-se mais que a vida máxima e não deixa ultrapassar esse máximo
             defender_vida_atual = defender_vida_max
             print("Vida recuperada ate ao maximo!")
         
-
+        #dá prints depois de se curar
         print("CURA BEM SUCEDIDA!")
         print("Vida atual: ")
         print(defender_vida_atual)
@@ -274,16 +292,17 @@ def usar_cura(numero_da_cura):
         print(defender_energia_max)
         return True
     else:
-        print("FALHOU A CURA! Energia insuficiente.")
+        print("FALHOU A CURA! Energia insuficiente.") #energia insuficiente 
         som.beep()
         return False
 
+#Função que faz os turnos do jogo
 def turnos_do_jogo():
     global defender_vida_atual
     global defender_energia_atual
     print("\n--- O JOGO VAI COMECAR! ---")
     
-    for turno_atual in range(1, 14):
+    for turno_atual in range(1, 14): #percorre os 13 turnos do jogo
         
         print("\n-------------------------------------")
         print("--- INICIANDO TURNO ---")
@@ -296,30 +315,30 @@ def turnos_do_jogo():
             print("Execucao do turno cancelada. A sair do jogo...")
             break 
         
-        if turno_atual % 2 != 0:
+        if turno_atual % 2 != 0: # turno do inimigo
             print("TURNO DO INIMIGO")
-            
+            #Lógica do turno do inimigo (ainda por implementar)
             inimigo_atacou = False
             dano_total_neste_turno = 0 
 
-            
+            #calculo do dano do inimigo (ainda não testado)
             if inimigo_atacou:
                 print("\nDANO TOTAL RECEBIDO NESTE TURNO:")
                 print(dano_total_neste_turno)
                 defender_vida_atual -= dano_total_neste_turno
             else:
                 print("Nenhum inimigo (vivo) atacou neste turno.")
-        else:
+        else: #tuno do robô
             print("TURNO DO ROBO!")
-            
+            #faz o calculo de recuperar a energia do robô segundo as regras
             energia_a_recuperar = int(defender_energia_atual * 0.5)
             defender_energia_atual += energia_a_recuperar
-            if defender_energia_atual > defender_energia_max:
+            if defender_energia_atual > defender_energia_max:# não deixa ultrapassar o máximo de energia
                 defender_energia_atual = defender_energia_max
             
             print("Energia atual: ")
             print(defender_energia_atual)
-            
+            #menu de escolha entre atacar ou usar cura
             print("\nO que queres fazer?")
             print(" 1 - Atacar com Grua")
             print(" 2 - Atacar com Toque")
@@ -348,26 +367,31 @@ def turnos_do_jogo():
         
         print("\n--- FIM DO TURNO ---")
         
-        if defender_vida_atual <= 0:
+        if defender_vida_atual <= 0: #verifica se o robô foi destruido
             print("\nGAME OVER! Foste destruido!")
             break 
             
         sleep(2) 
-
+    #se no ultimo turno o robô ainda tiver vida, ele vence
     if defender_vida_atual > 0:
         print("\n--- VITORIA! ---")
         print("Sobreviveste aos 13 turnos!")
 
 def main():
-    som.play_file("cbaec71a.wav")
-    #som.play_file("Madeira-Mix-_h_LHYlsr4vI_.wav")
+    #som.play_file("cbaec71a.wav") #play ao som do max verstappen
+    #som.play_file("Madeira-Mix-_h_LHYlsr4vI_.wav") #play ao som do madeira mix
     
-    confirmar_inicialização()
-    turnos_do_jogo()
-    #atacar_com_toque()
-    #atacar_com_grua()
+    confirmar_inicialização() #confirma a inicialização do robo
+    turnos_do_jogo() #inicia os turnos do jogo, podem tirar isto para ser mais fácil testar o tabuleiro
+    #atacar_com_toque() #ataque de toque
+    #atacar_com_grua() #ataque com grua
+    #usem este while para testar os sensores, se quiserem resultados mais rápidos metam um numero
+    #mais pequeno no sleep, para terminar usem ctrl+c
+    #recomendo começarem por testar quais cores o gajo tá a ler com o sensor de cor no tabuleiro 
+    #e façam ele dar uma volta dentro do quadrado para ver se ele esta dentro para depois ele começar o jogo
+    #vejam tbm as cores das cartolinas como estão
     #while True:
-    #    detetar_cor()
+    #    detetar_cor() 
     #    distancia()
     #    sensor_toque_estado()
     #    print("---------------------------") 
