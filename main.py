@@ -27,6 +27,12 @@ defender_energia_atual = 500
 energia_a_recuperar_prox_turno = 0 #Para calculo de energia a recuperar no proximo turno
 vida_a_recuperar_prox_turno = 0 #Para calculo de vida a recuperar no proximo turno
 
+#Slots dos inimigos no tabuleiro
+NUMERO_DE_SLOTS = 8  # <--- MUDAS AQUI PARA O NÚMERO QUE QUISERES
+slots_inimigos = {
+    i: {'tipo': None, 'vida_inicial': 0, 'vida_atual': 0, 'turno_ataque': 0} 
+    for i in range(1, NUMERO_DE_SLOTS + 1)
+}
 #Dicionarios com dados dos ataques, curas e inimigos
 ATAQUES = {
     'grua': {'dano': 100, 'custo_en': 300},
@@ -378,69 +384,18 @@ def turnos_do_jogo():
         print("\n--- VITORIA! ---")
         print("Sobreviveste aos 13 turnos!")
 
-#Função de ataque inimigo (não foi testada ainda, pode conter erros)
-def ataque inimigo():
-    inimigo_atacou = False
-    dano_total_neste_turno = 0 # Acumulador de dano
 
-    for slot_id, info in slots_inimigos.items():
-        
-        # 1. Verifica se é o turno deste slot E se o inimigo está VIVO
-        if info['turno_ataque'] == turno_atual and info['vida_atual'] > 0:
-            
-            inimigo_atacou = True
-            tipo_inimigo = info['tipo']
-            
-            # 2. Vai buscar os dados do inimigo
-            dados_inimigo = INIMIGOS[tipo_inimigo]
-            dano_por_ataque = dados_inimigo['forca']
-            num_ataques = dados_inimigo['ataques'] # A REGRA QUE FALTAVA
-            
-            print("ATAQUE! O ")
-            print(tipo_inimigo)
-            print(" no slot ")
-            print(slot_id)
-            print(" ataca ") 
-            print(num_ataques) 
-            print("vez(es)!")
-            
-            # 3. Executa os ataques (um por um)
-            for i in range(num_ataques):
-                # i vai de 0 até (num_ataques - 1)
-                #print(f"  -> Ataque {i+1}/{num_ataques}: Dano de {dano_por_ataque}!")
-                dano_total_neste_turno += dano_por_ataque
-                # (Podes adicionar um som.beep() aqui para cada hit)
-            
-            som.speak("Dano recebido", espeak_opts='-v pt')
-    
-    # 4. Aplica o dano total ao Defender-bot
-    if inimigo_atacou:
-        print("DANO TOTAL RECEBIDO NESTE TURNO: ")
-        orint(dano_total_neste_turno)
-        # Aplica o dano total ao Defender-bot
-        defender_vida_atual -= dano_total_neste_turno
-    else:
-        print("Nenhum inimigo (vivo) atacou neste turno.")
-
-#Função para sortear os inimigos e quais rounds colocar os mesmos no tabuleiro(ainda não testada)
 def sortear_inimigos_com_dados():
-
-    #Simula o lançamento de dados para configurar o tabuleiro.
-    #Define Tipo, Slot e Turno aleatoriamente.
-    #O robô diz ao utilizador onde colocar as peças.
+    """
+    Preenche os slots de 1 a 6 SEQUENCIALMENTE.
+    Sorteia apenas o Tipo e o Turno para cada slot.
+    """
     global slots_inimigos
     global INIMIGOS
+    print("\n--- A PREENCHER TABULEIRO (DADOS VIRTUAIS) ---")
     
-    print("\n--- A SORTEAR INIMIGOS (DADOS VIRTUAIS) ---")
-    
-    # Lista de slots disponíveis. À medida que escolhemos, removemos da lista.
-    slots_disponiveis = [1, 2, 3, 4, 5, 6]
-    
-    # Vamos criar 6 inimigos (a força atacante tem 6 unidades)
-    for i in range(6):
-        
-        print("\n--- Sorteio da Unidade ---")
-        print(i+1)
+    # Loop direto do 1 ao 6 (Slot 1, Slot 2, ..., Slot 6)
+    for slot_atual in range(1, 7):        
         # 1. Rolar Dado para o TIPO (1 a 6)
         dado_tipo = random.randint(1, 6)
         
@@ -454,38 +409,24 @@ def sortear_inimigos_com_dados():
         # 2. Rolar Dado para o TURNO (1 a 6)
         dado_turno = random.randint(1, 6)
         
-        # 3. Escolher um SLOT LIVRE (sem repetição)
-        # O random.choice escolhe um da lista
-        slot_escolhido = random.choice(slots_disponiveis)
-        # Removemos da lista para não voltar a sair
-        slots_disponiveis.remove(slot_escolhido)
-        
-        # 4. Guardar na memória do Robô
+        # 3. Guardar na memória do Robô
+        # Vai buscar a vida máxima ao dicionário de stats
         vida_inicial = INIMIGOS[tipo]['vida']
-        
-        slots_inimigos[slot_escolhido]['tipo'] = tipo
-        slots_inimigos[slot_escolhido]['vida_atual'] = vida_inicial
-        slots_inimigos[slot_escolhido]['turno_ataque'] = dado_turno
-        
-        # 5. INSTRUIR O JOGADOR
-        print("Coloca ") 
-        print(tipo)
-        print(" no Slot ") 
-        print(slot_escolhido)
-        print("Turno ") 
-        print(dado_turno)
 
+        # Como estamos no loop 'for slot_atual', guardamos diretamente nesse slot
+        slots_inimigos[slot_atual]['tipo'] = tipo
+        slots_inimigos[slot_atual]['vida_atual'] = vida_inicial
+        slots_inimigos[slot_atual]['turno_ataque'] = dado_turno
 
-
-
-
+        # 4. Instruir o jogador (opcional: podes comentar isto se quiseres ser mais rápido)
+        print("Slot",slot_atual,"Coloca",tipo,"Turno",dado_turno) 
 
 def main():
     #som.play_file("cbaec71a.wav") #play ao som do max verstappen
     #som.play_file("Madeira-Mix-_h_LHYlsr4vI_.wav") #play ao som do madeira mix
     
-    confirmar_inicialização() #confirma a inicialização do robo
-    turnos_do_jogo() #inicia os turnos do jogo, podem tirar isto para ser mais fácil testar o tabuleiro
+    #confirmar_inicialização() #confirma a inicialização do robo
+    #turnos_do_jogo() #inicia os turnos do jogo, podem tirar isto para ser mais fácil testar o tabuleiro
     #atacar_com_toque() #ataque de toque
     #atacar_com_grua() #ataque com grua
     #usem este while para testar os sensores, se quiserem resultados mais rápidos metam um numero
@@ -494,12 +435,12 @@ def main():
     #e façam ele dar uma volta dentro do quadrado para ver se ele esta dentro para depois ele começar o jogo
     #vejam tbm as cores das cartolinas como estão
     #while True:
-    #    detetar_cor() 
-    #    distancia()
-    #    sensor_toque_estado()
-    #    print("---------------------------") 
-    #    sleep(1)
-
+        #detetar_cor() 
+        #distancia()
+        #sensor_toque_estado()
+        #print("---------------------------") 
+        #sleep(0.5)
+    sortear_inimigos_com_dados()
 
 main()
 
