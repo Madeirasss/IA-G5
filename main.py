@@ -7,7 +7,7 @@ from ev3dev2.console import Console
 from ev3dev2.sound import Sound
 import sys
 import random
-
+import time
 #definir inputs e outputs
 sensor_ultrassonico = UltrasonicSensor(INPUT_3)
 sensor_toque = TouchSensor(INPUT_2)
@@ -120,150 +120,137 @@ def sensor_toque_estado():
 def usar_som():
     Sound().play_file('Madeira-Mix-_h_LHYlsr4vI_.wav') #play ao som do madeira mix
 
-#Função de ataque com a grua, confirma se tem energia suficiente para atacar
-def atacar_com_grua():
-    global defender_energia_atual
-    custo = ATAQUES['grua']['custo_en']#vai buscar o custo do ataque com grua
-    dano = ATAQUES['grua']['dano']#vai buscar o dano do ataque com grua
-    print("A tentar 'Ataque com Grua' Custo:")
-    print(custo)
-
-    if defender_energia_atual >= custo: #confirma se tem energia suficiente
-        print("Energia OK. A procurar alvo (a andar para a frente)...")
-        movimento.on(SpeedPercent(30), SpeedPercent(30))#anda para a frente
-
-        # Continua a andar até o sensor ultrassonico detetar um objeto a menos de 10 cm
-        while sensor_ultrassonico.distance_centimeters > 10: #fica sempre a dar print da distancia que ta de um objeto
-            dist = sensor_ultrassonico.distance_centimeters
-            print("Distancia: ")
-            print(dist)
-            sleep(0.05)
-
-        print("\nAlvo encontrado! A parar.")
-        movimento.stop()#o robo pára para atacar o alvo
-        print("A ATACAR!")
-
-        movimento.on_for_seconds(SpeedPercent(-30), SpeedPercent(30), 3) #faz um 180º
-        sleep(0.5) #pára durante 0.5 seg para não bugar de os comandos sempre rápidos
-
-        motor_medio.on_for_seconds(SpeedPercent(100), 1.5) # Ataca com a grua
-        print("Ataque concluido.")
-        # Reduz a energia do robô
-
-        defender_energia_atual -= custo
-        print("Ataque bem sucedido! Energia restante: ")
-        print(defender_energia_atual)
-        movimento.on_for_seconds(SpeedPercent(30), SpeedPercent(-30), 3)
-        movimento.on(SpeedPercent(-20), SpeedPercent(-20))
-        while sensor_cor.color_name != "Blue":
-            # Pequena pausa para não sobrecarregar o CPU
-            sleep(0.01)
+def virar_com_gyro(graus):
+    """
+    Vira o robô X graus usando o Gyro.
+    Positivo = Direita, Negativo = Esquerda.
+    """
+    sensor_giro.reset()
+    sleep(0.1)
+    
+    # Define velocidade e direção baseada no sinal (+ ou -)
+    if graus > 0: # Direita
+        movimento.on(SpeedPercent(15), SpeedPercent(-15))
+        # Loop até chegar ao angulo (margem de erro pequena de 2 graus)
+        while sensor_giro.angle < (graus - 2): 
+            pass
+    else: # Esquerda
+        movimento.on(SpeedPercent(-15), SpeedPercent(15))
+        while sensor_giro.angle > (graus + 2): 
+            pass
             
-            # (Opcional de Segurança) Se ele recuar demais e vir Verde ou Vermelho, para também!
-            cor = sensor_cor.color_name
-            if cor == "Red":
-                print("Recuei demais! (Vi " + cor + ")")
-                break
-        #dá print na energia restante
-        movimento.on_for_seconds(SpeedPercent(-30), SpeedPercent(-30),0.3)
+    movimento.stop()
+    sleep(0.5) # Estabilizar
 
-        return dano
-
-    else:
-        print("FALHOU! Energia insuficiente.")#caso não tenha energia suficiente
+# ==============================================================================
+# NOVA FUNÇÃO DE ATAQUE (SEM MEDIR ROTAÇÃO DAS RODAS)
+# ==============================================================================
+def atacar_com_grua(slot_alvo):
+    global defender_energia_atual
+    
+    custo = ATAQUES['grua']['custo_en']
+    dano = ATAQUES['grua']['dano']
+    
+    print("\n--- ATAQUE GRUA (Slot " + str(slot_alvo) + ") ---")
+    
+    # 1. Verificar Energia
+    if defender_energia_atual < custo:
+        print("Energia insuficiente.")
         som.beep()
         return 0
 
+    # 2. Navegar até à linha (Já implementado no teu código principal)
+    # A função 'executar_ataque_manual_fisico' já chama o 'ir_ate_linha' antes disto.
+    # Assumimos que o robô acabou de parar em cima da linha preta.
+
+    # 3. Avançar para o Meio do Quadrado
+    # Como não queres medir rotação, usamos um tempo fixo seguro.
+    print("A centrar no quadrado...")
+    
+    # 4. Decidir lado e Virar 90º (Ficar de frente para o inimigo)
+    print("A virar para o alvo...")
+    if slot_alvo % 2 != 0:
+        # Impar = Esquerda (-90)
+        virar_com_gyro(-90)
+        direcao_inicial = -1
+    else:
+        # Par = Direita (90)
+        virar_com_gyro(90)
+        direcao_inicial = 1
+
+    # 5. Aproximar do Inimigo (Até Ultrassónico ver < 10cm)
+    print("A aproximar do inimigo...")
+    movimento.on(SpeedPercent(20), SpeedPercent(20))
+    
+    while sensor_ultrassonico.distance_centimeters > 15:
+        # Segurança: Se não encontrar nada e andar demasiado, para.
+        # Mas como pediste simples, deixamos só o US.
+        pass
+    movimento.stop()
+    print("Alvo encontrado.")
+    sleep(0.5)
+
+    # 6. O GRANDE 180 (Ficar de costas para o inimigo)
+    print("A rodar 180 para posicao de Grua...")
+    virar_com_gyro(180)
+
+    # 7. EXECUÇÃO DO ATAQUE
+    print(">>> ATAQUE GRUA <<<")
+    # Baixa a grua
+    motor_medio.on_for_seconds(SpeedPercent(100), 1.5) 
+    sleep(0.5)
+    # Levanta a grua
+    motor_medio.on_for_seconds(SpeedPercent(-100), 1.5)
+    
+    defender_energia_atual -= custo
+    print("Sucesso! Energia: " + str(defender_energia_atual))
+
+    # ==================================================================
+    # 8. O REGRESSO (SEM ROTAÇÃO)
+    # ==================================================================
+    # O robô está de costas para o inimigo.
+    # Logo, está de FRENTE para o corredor central.
+    # Só precisamos de andar em frente até detetar a LINHA PRETA central.
+    
+    print("A sair do slot...")
+    movimento.on(SpeedPercent(20), SpeedPercent(20))
+    
+    # Sai do slot até ver preto (ou até bater na parede oposta, cuidado)
+    # Usamos um timer minimo para ele não ler a linha do próprio quadrado imediatamente
+    time.sleep(0.5) 
+    
+    while True:
+        cor = sensor_cor.color_name
+        # Se vir a linha preta do corredor ou a parede vermelha
+        if cor == "Black":
+            print("Corredor detetado.")
+            break
+        if cor == "Red": 
+            print("Parede detetada (Segurança).")
+            break
+            
+    # Avança mais um bocadinho (0.3s) para o eixo das rodas ficar em cima da linha
+    # movimento.on_for_seconds(SpeedPercent(20), SpeedPercent(20), 0.3)
+    movimento.stop()
+
+    # 9. Virar para a Base
+    print("A virar para a Base...")
+    
+    # Se entramos à Direita, e estamos de frente para o corredor, a Base está à Esquerda.
+    # Se entramos à Esquerda, a Base está à Direita.
+    if direcao_inicial == 1: # Tinhamos virado à Direita
+        virar_com_gyro(90) # Vira Esquerda para a base
+    else: # Tinhamos virado à Esquerda
+        virar_com_gyro(-90) # Vira Direita para a base
+
+    # 10. Voltar à Base
+    voltar_a_base()
+    
+    return dano
+
+
 #Função de ataque com toque
-def atacar_com_toque():    
-    global defender_energia_atual 
-    
-    custo = ATAQUES['toque']['custo_en']
-    dano = ATAQUES['toque']['dano']
-    
-    print("A tentar 'Ataque com Toque' (Custo:", custo, ")")
-    
-    if defender_energia_atual >= custo:
 
-        print("Energia OK. A avancar para o impacto...")
-        
-        # Liga os motores para a frente
-        movimento.on(SpeedPercent(40), SpeedPercent(40)) 
-
-        # --- FASE 1: AVANÇAR ATÉ TOCAR ---
-        while not sensor_toque.is_pressed:
-            dist = sensor_ultrassonico.distance_centimeters
-            sleep(0.01) 
-            
-            # Segurança (se o alvo fugir)
-            if dist > 30: 
-                print("Alvo perdido!")
-                movimento.stop()
-                # Se falhou, recua o que andou (aqui usamos graus porque não sabemos onde estamos)
-                graus_para_recuar = movimento.left_motor.position
-                movimento.on_for_degrees(SpeedPercent(30), SpeedPercent(30), -graus_para_recuar)
-                return 0 
-
-        # --- FASE 2: O IMPACTO ---
-        movimento.stop()
-        print("ALVO ATINGIDO!")
-        
-        # Simula o choque
-        sleep(0.5)
-        
-        # --- FASE 3: RECUAR ATÉ VER AZUL ---
-        print("A recuar ate encontrar a zona AZUL...")
-        
-        # 1. Liga os motores para trás (e deixa ligados)
-        movimento.on(SpeedPercent(-20), SpeedPercent(-20)) # Velocidade mais baixa para não falhar a cor
-        
-        # 2. O LOOP MÁGICO
-        # Enquanto a cor NÃO for Blue, o programa fica preso aqui à espera
-        while sensor_cor.color_name != "Blue":
-            # Pequena pausa para não sobrecarregar o CPU
-            sleep(0.01)
-            
-            # (Opcional de Segurança) Se ele recuar demais e vir Verde ou Vermelho, para também!
-            cor = sensor_cor.color_name
-            if cor == "Red":
-                print("Recuei demais! (Vi " + cor + ")")
-                break
-        
-        # 3. Saiu do loop (viu Azul ou outra cor de paragem), então PARA.
-        movimento.stop()
-        print("Zona Azul encontrada. Posicao restaurada.")
-        
-        defender_energia_atual -= custo
-        print("Energia restante: ", defender_energia_atual)
-        return dano
-        
-    else:
-        print("FALHOU! Energia insuficiente.")
-        som.beep() 
-        return 0
-
-#Função que faz o ataque com som
-def atacar_com_som():
-    global defender_energia_atual
-    
-    custo = ATAQUES['som']['custo_en']
-    dano = ATAQUES['som']['dano']
-    
-    print("A tentar 'Ataque com Som' (Custo: ")
-    print(custo)
-    
-    if defender_energia_atual >= custo: #verifica se tem energia suficiente
-        defender_energia_atual -= custo #reduz a energia do robo
-        
-        som.beep()# realiza o ataque com som
-        print("Ataque bem sucedido! Energia restante: ")
-        print(defender_energia_atual)
-        
-        return dano
-    else:
-        print("FALHOU! Energia insuficiente.") #caso não tenha energia suficiente
-        som.beep() 
-        return 0
 
 #Função para usar as curas no menu
 def usar_cura(numero_da_cura):
@@ -307,65 +294,240 @@ def usar_cura(numero_da_cura):
         return False
 
 
+
+def obter_coordenadas_slot(slot_id):
+    """
+    Mapeamento manual dos slots para as linhas que pediste:
+    - Slot 1 e 2 -> Linha 1
+    - Slot 3 e 4 -> Linha 3
+    - Slot 5 e 6 -> Linha 5
+    """
+    
+    # 1. Definir a Linha (AGORA COM OS TEUS VALORES FIXOS)
+    linha_alvo = 1 # Valor base
+    
+    if slot_id == 1 or slot_id == 2:
+        linha_alvo = 1
+    elif slot_id == 3 or slot_id == 4:
+        linha_alvo = 3  # <--- Mudado conforme pediste
+    elif slot_id == 5 or slot_id == 6:
+        linha_alvo = 5  # <--- Mudado conforme pediste
+        
+    # 2. Definir a Direção (Igual a antes)
+    # Se o numero for PAR (2, 4, 6), é Direita (1). 
+    # Se for IMPAR (1, 3, 5), é Esquerda (-1)
+    if slot_id % 2 == 0:
+        direcao = 1 # Direita
+    else:
+        direcao = -1 # Esquerda
+        
+    return linha_alvo, direcao
+
+
+def ir_ate_linha(numero_linha_desejada):
+    """
+    Sai da base e avança até contar o numero certo de linhas pretas.
+    """
+    print(">> A viajar para a Linha " + str(numero_linha_desejada) + "...")
+    movimento.on(SpeedPercent(30), SpeedPercent(30))
+    
+    linhas_contadas = 0
+    estou_na_linha = False
+    
+    while True:
+        cor = sensor_cor.color_name
+        
+        # Lógica de contagem igual à da Patrulha
+        if cor == "Black":
+            if not estou_na_linha:
+                estou_na_linha = True
+                linhas_contadas += 1
+                print("Passou linha: " + str(linhas_contadas))
+                som.beep()
+                
+                # Se chegámos à linha que queríamos
+                if linhas_contadas == numero_linha_desejada:
+                    movimento.stop()
+                    print("Chegamos ao destino.")
+                    break
+                    
+        elif cor != "Black":
+            estou_na_linha = False
+            
+        # Segurança: Se bater ou vir parede vermelha
+        if cor == "Red" or sensor_toque.is_pressed:
+            movimento.stop()
+            print("Erro: Fim da pista encontrado antes do destino.")
+            break
+            
+        sleep(0.01)
+        
+    # Pequeno ajuste para parar as rodas exatamente em cima da cor (opcional)
+    # movimento.on_for_seconds(SpeedPercent(10), SpeedPercent(10), 0.2)
+
+def atacar_com_toque():    
+    global defender_energia_atual 
+    
+    custo = ATAQUES['toque']['custo_en']
+    dano = ATAQUES['toque']['dano']
+    movimento.stop()
+    print(">>> ATAQUE TOQUE (Custo:", custo, ")")
+    
+    if defender_energia_atual >= custo:
+        print("A avancar para impacto...")
+        # Avança com força (40%)
+        movimento.on(SpeedPercent(40), SpeedPercent(40)) 
+
+        # --- FASE 1: AVANÇAR ATÉ TOCAR ---
+        # Loop de segurança: Para se tocar no botão OU se andar demasiado (US > 30cm)
+        tempo_limite = time.time() + 4 # 4 segundos maximo para encontrar algo
+        
+        while not sensor_toque.is_pressed:
+            # Se o tempo passar ou o sensor US disser que já não há nada à frente
+            if time.time() > tempo_limite:
+                print("Tempo esgotado/Alvo falhado!")
+                movimento.stop()
+                # Recua um pouco por segurança (1 seg)
+                movimento.on_for_seconds(SpeedPercent(-30), SpeedPercent(-30), 1)
+                return 0 # Falhou
+            sleep(0.01)
+
+        # --- FASE 2: O IMPACTO ---
+        movimento.stop()
+        print("IMPACTO CONFIRMADO!")
+        som.beep()
+        sleep(0.5)
+        
+        # --- FASE 3: RECUAR ATÉ LINHA PRETA (CENTRO) ---
+        print("A recuar para o centro...")
+        movimento.on(SpeedPercent(-20), SpeedPercent(-20))
+        
+        # Sai da colisão (pequeno delay para não ler a cor do inimigo se ele estiver em cima da linha)
+        sleep(0.5) 
+        
+        # Recua até o sensor de cor ver a LINHA PRETA do corredor
+        while True:
+            cor = sensor_cor.color_name
+            if cor == "Black":
+                print("Centro (Linha Preta) encontrado.")
+                break
+            # Segurança: Parede vermelha
+            if cor == "Red":
+                break
+            sleep(0.01)
+            
+        movimento.stop()
+        
+        # Pequeno ajuste para o eixo das rodas ficar no meio da linha
+        # (O sensor de cor está à frente das rodas, por isso recuamos mais um pouquinho)
+        movimento.on_for_seconds(SpeedPercent(-15), SpeedPercent(-15), 0.2)
+        
+        defender_energia_atual -= custo
+        print("Energia restante: ", defender_energia_atual)
+        return dano
+        
+    else:
+        print("FALHOU! Energia insuficiente.")
+        som.beep() 
+        return 0
+
+# ==============================================================================
+# 2. ATAQUE COM SOM (Só gasta energia e faz barulho)
+# ==============================================================================
+def atacar_com_som():
+    global defender_energia_atual
+    
+    custo = ATAQUES['som']['custo_en']
+    dano = ATAQUES['som']['dano']
+    
+    print(">>> ATAQUE SONICO (Custo:", custo, ")")
+    
+    if defender_energia_atual >= custo:
+        # O robô já está virado para o inimigo (feito pela função principal)
+        # Vamos só avançar um pouquinho para "entrar" na sala, gritar e voltar
+        
+        # Opcional: Entrar um pouco no slot
+        movimento.on_for_seconds(SpeedPercent(20), SpeedPercent(20), 0.5)
+        
+        # O Ataque
+        som.beep()
+        sleep(0.5)
+        som.speak("Sonic Boom")
+        sleep(0.5)
+        
+        # Voltar para trás o mesmo tempo que avançou
+        movimento.on_for_seconds(SpeedPercent(-20), SpeedPercent(-20), 0.5)
+        
+        defender_energia_atual -= custo
+        print("Ataque concluido. Energia: ", defender_energia_atual)
+        return dano
+    else:
+        print("Energia insuficiente.")
+        som.beep() 
+        return 0
+
 def executar_ataque_manual_fisico(slot_alvo, tipo_arma):
     """
-    Navega ate ao slot e executa o ataque escolhido.
-    tipo_arma: 1=Grua, 2=Toque, 3=Som
+    Controla toda a sequência do ataque manual.
     """
-    print("\n--- A INICIAR ATAQUE MANUAL AO SLOT " + str(slot_alvo) + " ---")
+    print("\n--- INICIAR ATAQUE MANUAL (Slot " + str(slot_alvo) + ") ---")
     
-    # 1. Navegar ate a posicao (Usando as funcoes que ja tens)
+    # 1. Navegar até à linha correta (Usando a nova lógica de slots 1, 3, 5)
     linha_alvo, direcao = obter_coordenadas_slot(slot_alvo)
     ir_ate_linha(linha_alvo)
     
-    # 2. Virar para o inimigo
-    print("A virar para o alvo...")
-    sensor_giro.reset()
-    sleep(0.1)
+    # Centrar no quadrado (Avançar um pouco depois de ver a linha para as rodas ficarem no sitio)
+    movimento.on_for_seconds(SpeedPercent(30), SpeedPercent(30), 1.5)
     
-    ang_alvo = 88 if direcao == 1 else -88
-    
-    if direcao == 1: # Direita
-        movimento.on(SpeedPercent(15), SpeedPercent(-15))
-        while sensor_giro.angle < ang_alvo: pass
-    else: # Esquerda
-        movimento.on(SpeedPercent(-15), SpeedPercent(15))
-        while sensor_giro.angle > ang_alvo: pass
-    movimento.stop()
-    
-    # 3. Executar o Ataque
     dano_realizado = 0
-    if tipo_arma == 1:
-        dano_realizado = atacar_com_grua()
-    elif tipo_arma == 2:
-        dano_realizado = atacar_com_toque()
-    elif tipo_arma == 3:
-        dano_realizado = atacar_com_som()
+    
+    # --- OPÇÃO A: GRUA (Faz tudo sozinha) ---
+    if tipo_arma == 1: 
+        dano_realizado = atacar_com_grua(slot_alvo)
+        # A função atacar_com_grua já inclui o voltar_a_base, por isso acabamos aqui.
         
-    # 4. Atualizar Vida
+    # --- OPÇÃO B: TOQUE OU SOM (Nós controlamos a rotação) ---
+    else: 
+        # 2. Virar 90º para o inimigo
+        print("A virar para o alvo...")
+        
+        if slot_alvo % 2 != 0: # Impar = Esquerda
+             virar_com_gyro(-90)
+             direcao_inicial = -1
+        else: # Par = Direita
+             virar_com_gyro(90)
+             direcao_inicial = 1
+        
+        # 3. Executar o Ataque Específico
+        if tipo_arma == 2:
+            dano_realizado = atacar_com_toque()
+        elif tipo_arma == 3:
+            dano_realizado = atacar_com_som()
+            
+        # 4. Re-alinhar (Virar para a Base)
+        print("A realinhar com o corredor...")
+        
+        # Se virámos à Direita (1), agora para olhar para a Base temos de virar Esquerda (-90)
+        # Se virámos à Esquerda (-1), agora para olhar para a Base temos de virar Direita (90)
+        
+        if direcao_inicial == 1:
+            virar_com_gyro(-90)
+        else:
+            virar_com_gyro(90)
+        
+        # 5. Voltar à Base
+        voltar_a_base()
+
+    # --- ATUALIZAÇÃO DE DADOS ---
     if dano_realizado > 0:
         slots_inimigos[slot_alvo]['vida_atual'] -= dano_realizado
         if slots_inimigos[slot_alvo]['vida_atual'] <= 0:
             slots_inimigos[slot_alvo]['vida_atual'] = 0
             print("INIMIGO DESTRUIDO!")
-            som.speak("Alvo eliminado", espeak_opts='-v pt')
+            som.speak("Target Down")
         else:
-            print("Vida restante: " + str(slots_inimigos[slot_alvo]['vida_atual']))
-            
-    # 5. Voltar a Base
-    # Primeiro vira para o centro
-    print("A voltar a posicao...")
-    sensor_giro.reset()
-    sleep(0.1)
-    if direcao == 1: # Estava Dir -> Vira Esq
-        movimento.on(SpeedPercent(-15), SpeedPercent(15))
-        while sensor_giro.angle > -88: pass
-    else: # Estava Esq -> Vira Dir
-        movimento.on(SpeedPercent(15), SpeedPercent(-15))
-        while sensor_giro.angle < 88: pass
-    movimento.stop()
-    
-    voltar_a_base()
+            print("Inimigo HP: " + str(slots_inimigos[slot_alvo]['vida_atual']))
+
 
 def menu_acao_manual():
     """
@@ -702,7 +864,7 @@ def scan_lateral(numero_da_paragem, fazer_esq, fazer_dir):
         movimento.stop()
         sleep(0.5)
 
-    print("Scan concluído.")
+    print("Scan concluido.")
 
 # ==============================================================================
 # 4. VOLTAR A BASE
@@ -712,7 +874,6 @@ def voltar_a_base():
     print("\n--- A REGRESSAR A BASE ---")
     
     # 1. Recuar
-    movimento.on_for_seconds(SpeedPercent(-20), SpeedPercent(-20), 1.0)
     
     # 2. Virar 180 (Topo)
     print("Topo: A dar meia volta (180)...")
@@ -740,7 +901,6 @@ def voltar_a_base():
             
     # 4. Virar 180 (Base)
     print("Base: A dar meia volta final (180)...")
-    movimento.on_for_seconds(SpeedPercent(-20), SpeedPercent(-20), 1.0) # Recuo de seguranca
     
     sensor_giro.reset()
     sleep(0.1)
@@ -810,7 +970,7 @@ def percorrer_e_mapear(turno_atual):
 
                     # --- EXECUÇÃO ---
                     if fazer_esq or fazer_dir:
-                        print("Scan Necessário: Esq=" + str(fazer_esq) + " Dir=" + str(fazer_dir))
+                        print("Scan Necessario: Esq=" + str(fazer_esq) + " Dir=" + str(fazer_dir))
                         
                         # ALINHAMENTO SEGURO (Com deteção de Vermelho)
                         tempo_inicial = time.time()
@@ -867,8 +1027,9 @@ def imprimir_relatorio_final():
 # MAIN
 # ==============================================================================
 def main():
-    sortear_inimigos_com_dados()
     turnos_do_jogo()
+    sortear_inimigos_com_dados()
+    #turnos_do_jogo()
     # Pergunta qual slot atacar
     
     # Simulação: Vamos atacar o Slot 3
