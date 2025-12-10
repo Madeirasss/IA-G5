@@ -35,8 +35,8 @@ slots_inimigos = {
 }
 #Dicionarios com dados dos ataques, curas e inimigos
 ATAQUES = {
-    'grua': {'dano': 100, 'custo_en': 300},
-    'toque': {'dano': 200, 'custo_en': 150},
+    'grua': {'dano': 200, 'custo_en': 300},
+    'toque': {'dano': 100, 'custo_en': 150},
     'som':   {'dano': 50,  'custo_en': 50}
 }
 
@@ -553,8 +553,8 @@ def menu_acao_manual():
                     # Verifica se o slot tem inimigo vivo
                     if slots_inimigos[slot]['vida_atual'] > 0:
                         print("Escolha a arma:")
-                        print(" 1. Grua (100 Dano / 300 En)")
-                        print(" 2. Toque (200 Dano / 150 En)")
+                        print(" 1. Grua (200 Dano / 300 En)")
+                        print(" 2. Toque (100 Dano / 150 En)")
                         print(" 3. Som (50 Dano / 50 En)")
                         arma_str = input("Opcao: ")
                         
