@@ -17,7 +17,7 @@ motor_medio = MediumMotor(OUTPUT_C)
 movimento = MoveTank(OUTPUT_D, OUTPUT_B)
 sensor_giro = GyroSensor(INPUT_4)
 som = Sound()
-
+som.volume = 100
 
 #Definir variaveis do jogo
 defender_vida_max = 750
@@ -190,7 +190,7 @@ def atacar_com_grua(slot_alvo):
     print("A aproximar do inimigo...")
     movimento.on(SpeedPercent(20), SpeedPercent(20))
     
-    while sensor_ultrassonico.distance_centimeters > 15:
+    while sensor_ultrassonico.distance_centimeters > 20:
         # Segurança: Se não encontrar nada e andar demasiado, para.
         pass
     movimento.stop()
@@ -326,9 +326,9 @@ def atacar_com_som():
         movimento.on_for_seconds(SpeedPercent(20), SpeedPercent(20), 0.5)
         
         # O Ataque
-        som.beep()
+
         sleep(0.5)
-        som.speak("Sonic Boom")
+        som.play_file('ataque de som.wav')
         sleep(0.5)
         
         # Voltar para trás o mesmo tempo que avançou
@@ -377,6 +377,7 @@ def usar_cura(numero_da_cura):
         
         #dá prints depois de se curar
         print("CURA BEM SUCEDIDA!")
+        som.play_file('cura.wav')
         print("Vida atual: ", defender_vida_atual,"Energia atual: ", defender_energia_atual)
         return True
     else:
@@ -605,91 +606,68 @@ def ler_cor_e_guardar(slot_id):
 
 
 # Função para scanear lateralmente numa paragem (direita e/ou esquerda)
+# Função para scanear lateralmente numa paragem (direita e/ou esquerda)
 def scan_lateral(numero_da_paragem, fazer_esq, fazer_dir):
-    print("\n--- SCAN PARAGEM " + str(numero_da_paragem) + " ---")
+    print("\n--- SCAN SELETIVO PARAGEM " + str(numero_da_paragem) + " ---")
     movimento.stop()
     sleep(0.5)
     
     slot_esq = (numero_da_paragem * 2) - 1
     slot_dir = (numero_da_paragem * 2)
     
-    # VERIFICAR ESQUERDA (Se solicitado)
+    # --- VERIFICAR ESQUERDA ---
     if fazer_esq:
-        print(">> A verificar ESQUERDA (Slot " + str(slot_esq) + ")...")
-        sensor_giro.reset()
-        sleep(0.1)
-        
-        # Virar -90
-        movimento.on(SpeedPercent(-15), SpeedPercent(15))
-        while sensor_giro.angle > -90: 
-            pass 
-        movimento.stop()
-        sleep(0.5)
+        print(">> A apontar para ESQUERDA (Slot " + str(slot_esq) + ")...")
+        virar_com_gyro(-90) # Usa a função de giro que já tens
+        sleep(0.3) # Estabilizar o sensor ultrassónico
 
-        # Avançar um pouco para ler melhor a cor (Scan)
-        movimento.on_for_seconds(SpeedPercent(20), SpeedPercent(20), 1.3)
-        movimento.stop()
-        sleep(0.5)
-
+        # 1. Verificação de Distância ANTES de entrar
         dist = sensor_ultrassonico.distance_centimeters
-        cor = sensor_cor.color_name
-        # Lógica de Deteção
-        if dist < 40 or cor in ["Blue", "Green", "Brown"]:
-            print("Objeto detetado.")
+        print("Distancia lida: " + str(dist) + " cm")
+
+        if dist < 40: # Se houver algo a menos de 50cm (ajusta este valor se necessário)
+            print("Inimigo detetado! A entrar no quadrado para identificar...")
+            # Avança para ler a cor
+            movimento.on_for_seconds(SpeedPercent(20), SpeedPercent(20), 1.3)
             ler_cor_e_guardar(slot_esq)
+            # Recua para o corredor
+            movimento.on_for_seconds(SpeedPercent(-20), SpeedPercent(-20), 1.3)
         else:
-            print("Vazio.")
+            print("Slot vazio. A ignorar entrada.")
             slots_inimigos[slot_esq]['tipo'] = "Vazio"
             slots_inimigos[slot_esq]['vida_atual'] = 0
             
-        # Recuar para o centro do corredor
-        movimento.on_for_seconds(SpeedPercent(-20), SpeedPercent(-20), 1.3)
-        
-        # Recentrar (Voltar a 0 graus)
-        print(">> A voltar ao centro...")
-        movimento.on(SpeedPercent(15), SpeedPercent(-15))
-        while sensor_giro.angle < -2:  
-            pass
-        movimento.stop()
-        sleep(0.5)
+        # Recentrar (Voltar a olhar para a frente)
+        print(">> A voltar ao eixo do corredor...")
+        virar_com_gyro(90)
+        sleep(0.2)
 
-    # VERIFICAR DIREITA (Se solicitado)
+    # --- VERIFICAR DIREITA ---
     if fazer_dir:
-        print(">> A verificar DIREITA (Slot " + str(slot_dir) + ")...")
-        sensor_giro.reset() 
-        sleep(0.5)
-        
-        movimento.on(SpeedPercent(15), SpeedPercent(-15))
-        while sensor_giro.angle < 90: 
-            pass 
-        movimento.stop()
-        sleep(0.5)
-        # Avançar um pouco para ler melhor a cor (Scan)
-        movimento.on_for_seconds(SpeedPercent(20), SpeedPercent(20), 1.3)
-        movimento.stop()
-        sleep(0.5)
+        print(">> A apontar para DIREITA (Slot " + str(slot_dir) + ")...")
+        virar_com_gyro(90)
+        sleep(0.3)
+
+        # 1. Verificação de Distância ANTES de entrar
         dist = sensor_ultrassonico.distance_centimeters
-        cor = sensor_cor.color_name
-        
-        if dist < 40 or cor in ["Blue", "Green", "Brown"]:
-            print("Objeto detetado.")
+        print("Distancia lida: " + str(dist) + " cm")
+
+        if dist < 40:
+            print("Inimigo detetado! A entrar para no quadrado para identificar...")
+            movimento.on_for_seconds(SpeedPercent(20), SpeedPercent(20), 1.3)
             ler_cor_e_guardar(slot_dir)
+            movimento.on_for_seconds(SpeedPercent(-20), SpeedPercent(-20), 1.3)
         else:
-            print("Vazio.")
+            print("Slot vazio. A ignorar entrada.")
             slots_inimigos[slot_dir]['tipo'] = "Vazio"
             slots_inimigos[slot_dir]['vida_atual'] = 0
             
-        movimento.on_for_seconds(SpeedPercent(-20), SpeedPercent(-20), 1.3)
-        
-        # Recentrar (Voltar a 0 graus)
-        print(">> A voltar ao centro...")
-        movimento.on(SpeedPercent(-15), SpeedPercent(15))
-        while sensor_giro.angle > 0: 
-            pass
-        movimento.stop()
-        sleep(0.5)
+        # Recentrar (Voltar a olhar para a frente)
+        print(">> A voltar ao eixo do corredor...")
+        virar_com_gyro(-90)
+        sleep(0.2)
 
-    print("Scan concluido.")
+    print("Scan da paragem concluido.")
 
 
 # Função para voltar à base
@@ -834,96 +812,77 @@ def turnos_do_jogo():
     global defender_energia_atual
     
     print("\n" + "="*40)
-    print("      SISTEMA DE COMBATE HIBRIDO")
+    print("      SISTEMA AUTOMATIZADO COM IA")
     print("="*40)
 
     for turno in range(1, 14):
-        # 1. MOSTRAR CONFIGURAÇÃO DO TABULEIRO (Antes do Enter)
-        # Chamamos o relatório para saberes o que o robô mapeou até agora
+        # --- RELATÓRIO DE STATUS NO INÍCIO DE CADA TURNO ---
         print("\n" + "-"*30)
-        print(" ESTADO DO TABULEIRO (Turno {})".format(turno))
+        print(" STATUS DO CAMPO (Turno {})".format(turno))
         imprimir_relatorio_final()
+        print(" Vida: {} | Energia: {}".format(defender_vida_atual, defender_energia_atual))
         print("-"*30)
 
-        print("\n" + "!"*40)
-        print(" TURNO {:02d} / 13 ".format(turno).center(40, " "))
-        print("!"*40)
-        
-        # Pausa para controlo total do utilizador
-        input("\n>>> Pressiona ENTER para iniciar o turno...")
-
-        # TURNOS ÍMPARES (INIMIGO)
+        # TURNOS ÍMPARES (FASE INIMIGA) -> REQUER ENTER
         if turno % 2 != 0:
-            print("[FASE INIMIGA]")
+            print("\n!!! [FASE INIMIGA] !!!")
+            input(">>> Pressiona ENTER para processar dano dos inimigos...")
             
-            # Passamos o turno atual para o cálculo correto de dano (regra de 1 turno de espera)
             dano_recebido = calcular_ameaca_total_no_tabuleiro(turno)
             
             if dano_recebido > 0:
                 defender_vida_atual -= dano_recebido
-                print(">> Recebeste {} de dano.".format(dano_recebido))
-                som.beep() # Alerta de dano
+                print(">> SOFRESTE DANO: {} pontos.".format(dano_recebido))
+                som.play_file('som de dano.wav')
             else:
-                print(">> Nenhum inimigo em posicao de ataque (aguardando turno ou vazio).")
+                
+                print(">> Nenhum inimigo em posicao de ataque.")
 
-        # TURNOS PARES (ROBÔ)
+        # TURNOS PARES (FASE ROBÔ) -> IA AUTOMÁTICA
         else:
-            print("\n[FASE ROBO]")
+            print("\n>>> [FASE ROBO - IA EM EXECUCAO] <<<")
             
-            # Recuperação de Energia
+            # 1. Recuperação Automática de Energia
             recup = int(defender_energia_atual * 0.5)
             defender_energia_atual += recup
             if defender_energia_atual > defender_energia_max:
                 defender_energia_atual = defender_energia_max
             
-            print(">> Energia: {} (+{}) | Vida: {}".format(defender_energia_atual, recup, defender_vida_atual))
+            print(">> Energia regenerada: +{} (Total: {})".format(recup, defender_energia_atual))
             
-            # Patrulha Automática (Turnos de Scan)
+            # 2. Patrulha/Scan Automático (Turnos específicos)
             if turno in [2, 4, 6, 8, 10, 12]:
                 percorrer_e_mapear(turno)
             
-            # DECISÃO DE COMANDO
-            print("\n--- DECISAO DE COMANDO ---")
-            escolha = input("Escolha: (A) para IA Preditiva ou (M) para Menu Manual: ").upper()
+            # 3. Decisão da IA Preditiva (Sem perguntas ao utilizador)
+            decisao, alvo, detalhe = decidir_jogada_IA(turno)
             
-            if escolha == 'M':
-                menu_acao_manual()
+            if decisao == "ATACAR":
+                print(">> IA DECIDIU: Atacar Slot {} com arma {}".format(alvo, detalhe))
+                executar_ataque_manual_fisico(alvo, detalhe)
+            
+            elif decisao == "CURAR":
+                print(">> IA DECIDIU: Curar-se (Nivel {})".format(alvo))
+                usar_cura(alvo)
+            
             else:
-                print(">> A consultar IA Preditiva...")
-                decisao, alvo, detalhe = decidir_jogada_IA(turno)
-                
-                if decisao == "ATACAR":
-                    print(">> IA decidiu ATACAR Slot {} com arma {}".format(alvo, detalhe))
-                    executar_ataque_manual_fisico(alvo, detalhe)
-                
-                elif decisao == "CURAR":
+                print(">> IA DECIDIU: Passar turno (Acumular energia/Seguranca).")
 
-                    print(">> IA decidiu CURAR-SE (Nivel {})".format(alvo))
-                    usar_cura(alvo) 
-                
-                else:
-                    print(">> IA decidiu PASSAR TURNO para acumular energia.")
-            
-        # --- FIM DO TURNO: MOSTRAR VIDA SE SOBREVIVER ---
-        if defender_vida_atual > 0:
-            print("\n" + "."*30)
-            print(" RESUMO FINAL DO TURNO {}".format(turno))
-            print(" VIDA RESTANTE DO ROBO: {}".format(defender_vida_atual))
-            print(" ENERGIA ATUAL: {}".format(defender_energia_atual))
-            print("."*30)
-        else:
+        # --- VERIFICAÇÃO DE FIM DE JOGO ---
+        if defender_vida_atual <= 0:
             print("\n" + "X"*40)
             print("      GAME OVER - O ROBO FOI DESTRUIDO")
             print("X"*40)
+            som.play_file('robo morte.wav')
             break
             
-        print("\n--- Turno {} concluido. Aguardando proximo... ---".format(turno))
+        print("\n--- Turno {} concluido. ---".format(turno))
 
     if defender_vida_atual > 0:
         print("\n" + "#"*40)
         print("      VITORIA - MISSAO CUMPRIDA!")
         print("#"*40)
-        imprimir_relatorio_final()
+        som.play_file('Vitoria.wav')
 
 
 # Função para imprimir o relatório final dos inimigos mapeados
