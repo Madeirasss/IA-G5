@@ -27,14 +27,15 @@ defender_energia_atual = 500
 
 
 #Slots dos inimigos no tabuleiro
-NUMERO_DE_SLOTS = 6  # <--- MUDAS AQUI PARA O NÚMERO QUE QUISERES
+NUMERO_DE_SLOTS = 6 
 slots_inimigos = {
-    i: {'tipo': None, 'vida_inicial': 0, 'vida_atual': 0, 'turno_ataque': 0} 
+    i: {'tipo': None, 'vida_inicial': 0, 'vida_atual': 0, 'turno_ataque': 0, 'munição': 0} 
     for i in range(1, NUMERO_DE_SLOTS + 1)
 }
 
+#Tabuleiro real com dados verdadeiros dos inimigos
 tabuleiro_real = {
-    i: {'tipo': "Vazio", 'vida_atual': 0, 'turno_ataque': 0} 
+    i: {'tipo': "Vazio", 'vida_atual': 0, 'turno_ataque': 0, 'munição': 0} 
     for i in range(1, NUMERO_DE_SLOTS + 1)
 }
 
@@ -69,7 +70,7 @@ PRIORIDADES = {
 #Função para confirmar a inicialização do robo
 def confirmar_inicialização():
     print("--- ROBO INICIALIZADO ---")
-    print("Vida atual: ", defender_vida_atual, "Vida Máxima", defender_vida_max, "Energia atual: ", defender_energia_atual, "Energia Máxima", defender_energia_max)
+    print("Vida atual: ", defender_vida_atual, "Vida Maxima", defender_vida_max, "Energia atual: ", defender_energia_atual, "Energia Maxima", defender_energia_max)
 
 
 #Função para calcular o angulo de giro com o sensor giroscopico
@@ -138,27 +139,29 @@ def usar_som():
     Sound().play_file('Madeira-Mix-_h_LHYlsr4vI_.wav') #play ao som do madeira mix
 
 
-#Função para virar o robo com o giroscopio
+# Função para virar o robô com precisão usando o Giroscópio
+# Lógica: Reinicia o ângulo (0), define a direção das rodas e espera até o sensor ler o valor desejado.
 def virar_com_gyro(graus):
-    sensor_giro.reset()
-    sleep(0.1)
+    sensor_giro.reset() # Zera o ângulo atual
+    sleep(0.1) # Pequena pausa para o sensor estabilizar
     
     # Define velocidade e direção baseada no sinal (+ ou -)
-    if graus > 0: # Direita
+    if graus > 0: # Valores positivos = Virar à Direita
         movimento.on(SpeedPercent(15), SpeedPercent(-15))
-        # Loop até chegar ao angulo (margem de erro pequena de 2 graus)
+        # Loop de espera ativa: continua a girar até chegar ao ângulo
+        # A margem de erro (-2) serve para compensar a inércia do motor ao travar
         while sensor_giro.angle < (graus - 2): 
             pass
-    else: # Esquerda
+    else: # Valores negativos = Virar à Esquerda
         movimento.on(SpeedPercent(-15), SpeedPercent(15))
         while sensor_giro.angle > (graus + 2): 
             pass
             
-    movimento.stop()
-    sleep(0.5) # Estabilizar
+    movimento.stop() # Trava os motores
+    sleep(0.5) # Tempo para o robô parar de abanar antes da próxima leitura
 
 
-#Função para atacr com a grua
+#Função para atacar com a grua
 def atacar_com_grua(slot_alvo):
     global defender_energia_atual
     
@@ -175,7 +178,7 @@ def atacar_com_grua(slot_alvo):
 
     print("A centrar no quadrado...")
     
-    # 4. Decidir lado e Virar 90º (Ficar de frente para o inimigo)
+    # 2. Decidir lado e Virar 90º (Ficar de frente para o inimigo)
     print("A virar para o alvo...")
     if slot_alvo % 2 != 0:
         # Impar = Esquerda (-90)
@@ -186,7 +189,7 @@ def atacar_com_grua(slot_alvo):
         virar_com_gyro(90)
         direcao_inicial = 1
 
-    # 5. Aproximar do Inimigo (Até Ultrassónico ver < 10cm)
+    # 3. Aproximar do Inimigo (Até Ultrassónico ver < 10cm)
     print("A aproximar do inimigo...")
     movimento.on(SpeedPercent(20), SpeedPercent(20))
     
@@ -197,11 +200,11 @@ def atacar_com_grua(slot_alvo):
     print("Alvo encontrado.")
     sleep(0.5)
 
-    # 6. Ficar de costas para o inimigo
+    # 4. Ficar de costas para o inimigo
     print("A rodar 180 para posicao de Grua...")
     virar_com_gyro(180)
 
-    # 7. EXECUÇÃO DO ATAQUE
+    # 5. EXECUÇÃO DO ATAQUE
     print(">>> ATAQUE GRUA <<<")
     motor_medio.on_for_seconds(SpeedPercent(100), 1.5) 
     sleep(0.5)
@@ -229,7 +232,7 @@ def atacar_com_grua(slot_alvo):
 
     movimento.stop()
 
-    # 9. Virar para a Base
+    # 6. Virar para a Base
     print("A virar para a Base...")
     
     if direcao_inicial == 1: # Tinhamos virado à Direita
@@ -409,38 +412,42 @@ def obter_coordenadas_slot(slot_id):
     return linha_alvo, direcao
 
 
-#Função para ir até a linha desejada
+# Função para navegar no corredor central contando linhas pretas
+# O robô avança até contar o número de linhas pedido (1, 3 ou 5).
 def ir_ate_linha(numero_linha_desejada):
     print(">> A viajar para a Linha " + str(numero_linha_desejada) + "...")
     movimento.on(SpeedPercent(30), SpeedPercent(30))
     
     linhas_contadas = 0
-    estou_na_linha = False
+    estou_na_linha = False # Flag para evitar contar a mesma linha várias vezes enquanto passa por cima dela
     
     while True:
         cor = sensor_cor.color_name
+        
+        # Detetou linha preta
         if cor == "Black":
-            if not estou_na_linha:
+            if not estou_na_linha: # É uma nova linha?
                 estou_na_linha = True
                 linhas_contadas += 1
                 print("Passou linha: " + str(linhas_contadas))
                 som.beep()
                 
-                # Se chegámos à linha que queríamos
+                # Se chegámos ao destino, para imediatamente
                 if linhas_contadas == numero_linha_desejada:
                     movimento.stop()
                     print("Chegamos ao destino.")
                     break
                     
         elif cor != "Black":
-            estou_na_linha = False
+            estou_na_linha = False # Saiu de cima da linha, pronto para contar a próxima
             
+        # Segurança: Se vir Vermelho (Parede) ou bater (Toque), para tudo.
         if cor == "Red" or sensor_toque.is_pressed:
             movimento.stop()
             print("Erro: Fim da pista encontrado antes do destino.")
             break
             
-        sleep(0.01)
+        sleep(0.01) # Poupa processador
 
 
 #Função que chama as funções de ataque, chama as de coordenadas e faz o movimento completo do ataque
@@ -493,167 +500,97 @@ def executar_ataque_manual_fisico(slot_alvo, tipo_arma):
     return dano_realizado 
 
 
-# Função para o menu de ação manual
-# Menu que permite ao utilizador escolher ações, apenas para debugging ou controlo total de novas funcionalidades
-def menu_acao_manual():
-    while True:
-        print("\n" + "="*30)
-        print("   MENU DE COMANDO MANUAL")
-        print("="*30)
-        print("Vida Robo: " + str(defender_vida_atual) + " | Energia: " + str(defender_energia_atual))
-        print("1. ATACAR INIMIGO")
-        print("2. USAR CURA")
-        print("3. VERIFICAR MAPA (Relatorio)")
-        print("4. TERMINAR TURNO (Passar)")
-        
-        opcao = input("Escolha (1-4): ")
-        
-        if opcao == '1':
-            slot_str = input("Qual Slot atacar (1-6)? ")
-            if slot_str.isdigit():
-                slot = int(slot_str)
-                if 1 <= slot <= 6:
-                    # Verifica se o slot tem inimigo vivo
-                    if slots_inimigos[slot]['vida_atual'] > 0:
-                        print("Escolha a arma:")
-                        print(" 1. Grua (200 Dano / 300 En)")
-                        print(" 2. Toque (100 Dano / 150 En)")
-                        print(" 3. Som (50 Dano / 50 En)")
-                        arma_str = input("Opcao: ")
-                        
-                        if arma_str.isdigit():
-                            arma = int(arma_str)
-                            if 1 <= arma <= 3:
-                                # EXECUTA O ATAQUE FISICO
-                                executar_ataque_manual_fisico(slot, arma)
-                                break # Sai do menu apos atacar (gasta o turno)
-                            else:
-                                print("Arma invalida.")
-                        else:
-                            print("Numero invalido.")
-                    else:
-                        print("Esse slot esta vazio ou o inimigo ja morreu.")
-                else:
-                    print("Slot invalido (1-6).")
-            else:
-                print("Entrada invalida.")
-                
-        elif opcao == '2':
-            print("Tipos de Cura:")
-            print(" 1. Pequena (Recupera 100 / Cust 200 Energia)")
-            print(" 2. Media   (Recupera 200 / Cust 300 Energia)")
-            print(" 3. Grande  (Recupera 400 / Cust 400 Energia)")
-            cura_str = input("Qual cura? ")
-            if cura_str.isdigit():
-                c = int(cura_str)
-                if 1 <= c <= 3:
-                    sucesso = usar_cura(c)
-                    if sucesso:
-                        break # Gasta o turno
-                else:
-                    print("Opcao invalida.")
-                    
-        elif opcao == '3':
-            imprimir_relatorio_final()
-            
-        elif opcao == '4':
-            print("A passar turno...")
-            break
-            
-        else:
-            print("Opcao invalida.")
-
-
-#Função para ler a cor e guardar o tipo de inimigo no slot correspondente
+# Função de Reconhecimento de Inimigo
+# Entra no slot, lê a cor, consulta a base de dados (Dicionário INIMIGOS) e guarda na memória.
 def ler_cor_e_guardar(slot_id):
     print("A aproximar para identificar...")
-    
-
     sleep(1)
     
-    # Le a cor do chão
     cor_lida = sensor_cor.color_name
     print("Cor detetada: " + cor_lida)
     
+    # Valores padrão (caso não encontre nada ou cor desconhecida)
     nome_inimigo = "Vazio"
     vida_inimigo = 0
+    municao_inicial = 0
     found = False
     
-    # Percorre cada item do dicionario: nome="Tanque", dados={'cor': 'Blue', ...}
+    # Procura a cor lida no dicionário de configurações
     for nome, dados in INIMIGOS.items():
-        # Compara a cor que está na memoria com a cor que o sensor leu
         if dados['cor'] == cor_lida:
-            nome_inimigo = nome       # Guardamos "Tanque"
-            vida_inimigo = dados['vida'] # Guardamos 200
+            nome_inimigo = nome
+            vida_inimigo = dados['vida']
+            municao_inicial = dados['ataques']
             found = True
-            print(cor_lida + " corresponde a inimigo: " + nome_inimigo)
-            break # Encontramos, podemos parar de procurar
+            break
     
-    sleep(0.5)
-    # Feedback e Registo
-    if found:
-        print("Identificado: " + nome_inimigo + " (" + str(vida_inimigo) + " HP)")
-    else:
-        print("Cor nao corresponde a inimigos (Vazio).")
-        som.beep()
-        
-    # Guarda no slot especifico do tabuleiro
+    # Atualiza a "Memória da IA" (O que o robô sabe)
     slots_inimigos[slot_id]['tipo'] = nome_inimigo
     slots_inimigos[slot_id]['vida_atual'] = vida_inimigo
+    slots_inimigos[slot_id]['municao'] = municao_inicial
     
-    # Recua para o centro
-    print("A voltar ao centro...")
+    # Atualiza o "Tabuleiro Real" (A verdade absoluta do jogo)
+    # Nota: Em um cenário real 100% autónomo, não terias acesso a esta variável 'tabuleiro_real'
+    tabuleiro_real[slot_id]['tipo'] = nome_inimigo
+    tabuleiro_real[slot_id]['vida_atual'] = vida_inimigo
+    tabuleiro_real[slot_id]['municao'] = municao_inicial
+    tabuleiro_real[slot_id]['turno_ataque'] = 0 
+    
+    if found:
+        print("Inimigo registado: " + nome_inimigo)
+    else:
+        print("Espaco vazio.")
 
 
-# Função para scanear lateralmente numa paragem (direita e/ou esquerda)
-# Função para scanear lateralmente numa paragem (direita e/ou esquerda)
+# Função complexa de Scan Lateral
+# O robô para numa interseção e decide se olha para a esquerda, direita ou ambos.
+# Usa o sensor Ultrassónico para ver se vale a pena entrar no slot.
 def scan_lateral(numero_da_paragem, fazer_esq, fazer_dir):
     print("\n--- SCAN SELETIVO PARAGEM " + str(numero_da_paragem) + " ---")
     movimento.stop()
     sleep(0.5)
     
+    # Matemática para converter o número da paragem (1, 2, 3) em IDs de Slots (1 a 6)
     slot_esq = (numero_da_paragem * 2) - 1
     slot_dir = (numero_da_paragem * 2)
     
     # --- VERIFICAR ESQUERDA ---
     if fazer_esq:
         print(">> A apontar para ESQUERDA (Slot " + str(slot_esq) + ")...")
-        virar_com_gyro(-90) # Usa a função de giro que já tens
-        sleep(0.3) # Estabilizar o sensor ultrassónico
+        virar_com_gyro(-90) # Vira 90 à esquerda
+        sleep(0.3) 
 
-        # 1. Verificação de Distância ANTES de entrar
+        # Otimização: Só entra se o ultrassónico vir algo perto (< 40cm)
         dist = sensor_ultrassonico.distance_centimeters
         print("Distancia lida: " + str(dist) + " cm")
 
-        if dist < 40: # Se houver algo a menos de 50cm (ajusta este valor se necessário)
-            print("Inimigo detetado! A entrar no quadrado para identificar...")
-            # Avança para ler a cor
-            movimento.on_for_seconds(SpeedPercent(20), SpeedPercent(20), 1.3)
-            ler_cor_e_guardar(slot_esq)
-            # Recua para o corredor
-            movimento.on_for_seconds(SpeedPercent(-20), SpeedPercent(-20), 1.3)
+        if dist < 40: 
+            print("Inimigo detetado! A entrar no quadrado...")
+            movimento.on_for_seconds(SpeedPercent(20), SpeedPercent(20), 1.3) # Entra
+            ler_cor_e_guardar(slot_esq) # Identifica
+            movimento.on_for_seconds(SpeedPercent(-20), SpeedPercent(-20), 1.3) # Sai
         else:
-            print("Slot vazio. A ignorar entrada.")
+            print("Slot vazio. A ignorar entrada.") # Poupa tempo e bateria
             slots_inimigos[slot_esq]['tipo'] = "Vazio"
             slots_inimigos[slot_esq]['vida_atual'] = 0
             
-        # Recentrar (Voltar a olhar para a frente)
+        # Volta a alinhar com o corredor principal
         print(">> A voltar ao eixo do corredor...")
         virar_com_gyro(90)
         sleep(0.2)
 
     # --- VERIFICAR DIREITA ---
+    # (Mesma lógica da esquerda, mas com giros invertidos)
     if fazer_dir:
         print(">> A apontar para DIREITA (Slot " + str(slot_dir) + ")...")
         virar_com_gyro(90)
         sleep(0.3)
 
-        # 1. Verificação de Distância ANTES de entrar
         dist = sensor_ultrassonico.distance_centimeters
         print("Distancia lida: " + str(dist) + " cm")
 
         if dist < 40:
-            print("Inimigo detetado! A entrar para no quadrado para identificar...")
+            print("Inimigo detetado! A entrar...")
             movimento.on_for_seconds(SpeedPercent(20), SpeedPercent(20), 1.3)
             ler_cor_e_guardar(slot_dir)
             movimento.on_for_seconds(SpeedPercent(-20), SpeedPercent(-20), 1.3)
@@ -662,19 +599,18 @@ def scan_lateral(numero_da_paragem, fazer_esq, fazer_dir):
             slots_inimigos[slot_dir]['tipo'] = "Vazio"
             slots_inimigos[slot_dir]['vida_atual'] = 0
             
-        # Recentrar (Voltar a olhar para a frente)
         print(">> A voltar ao eixo do corredor...")
         virar_com_gyro(-90)
         sleep(0.2)
 
     print("Scan da paragem concluido.")
 
-
-# Função para voltar à base
+# Função de retorno à segurança (Home)
+# Usada após ataques ou no fim do jogo.
 def voltar_a_base():
     print("\n--- A REGRESSAR A BASE ---")
     
-    #Virar 180 (Topo)
+    # 1. Virar 180 graus para ficar de costas para o fundo do corredor
     print("Topo: A dar meia volta (180)...")
     sensor_giro.reset()
     sleep(0.1)
@@ -683,13 +619,13 @@ def voltar_a_base():
     movimento.stop()
     sleep(0.5)
     
-    # Viajar ate À Base
+    # 2. Recuar até à base
     print("A navegar para a base...")
     movimento.on(SpeedPercent(30), SpeedPercent(30))
     
     while True:
         cor = sensor_cor.color_name
-        # Se vir a base (Vermelho) OU bater no fundo
+        # Condição de paragem: Ver cor Vermelha (Chão da base) ou Sensor de Toque (Parede)
         if cor == "Red" or sensor_toque.is_pressed:
             movimento.stop()
             print("Base encontrada!")
@@ -697,9 +633,8 @@ def voltar_a_base():
             break
         sleep(0.01)
             
-    # Virar 180 (Base)
+    # 3. Virar 180 graus novamente para ficar pronto para a próxima saída
     print("Base: A dar meia volta final (180)...")
-    
     sensor_giro.reset()
     sleep(0.1)
     movimento.on(SpeedPercent(15), SpeedPercent(-15))
@@ -806,57 +741,70 @@ def percorrer_e_mapear(turno_atual):
     movimento.stop()
 
 
-#Função para gerir os turnos do jogo
+# Loop Principal do Jogo (Turnos 1 a 13)
+# Gere a alternância entre Inimigos (Ímpares) e Robô (Pares).
 def turnos_do_jogo():
     global defender_vida_atual
     global defender_energia_atual
     
-    print("\n" + "="*40)
-    print("      SISTEMA AUTOMATIZADO COM IA")
-    print("="*40)
+    print("SISTEMA AUTOMATIZADO COM IA")
 
     for turno in range(1, 14):
-        # --- RELATÓRIO DE STATUS NO INÍCIO DE CADA TURNO ---
+        # Relatório Inicial do Turno
         print("\n" + "-"*30)
         print(" STATUS DO CAMPO (Turno {})".format(turno))
         imprimir_relatorio_final()
         print(" Vida: {} | Energia: {}".format(defender_vida_atual, defender_energia_atual))
         print("-"*30)
 
-        # TURNOS ÍMPARES (FASE INIMIGA) -> REQUER ENTER
+        # --- FASE INIMIGA (TURNOS ÍMPARES) ---
         if turno % 2 != 0:
             print("\n!!! [FASE INIMIGA] !!!")
             input(">>> Pressiona ENTER para processar dano dos inimigos...")
             
-            dano_recebido = calcular_ameaca_total_no_tabuleiro(turno)
+            dano_total_turno = 0
             
-            if dano_recebido > 0:
-                defender_vida_atual -= dano_recebido
-                print(">> SOFRESTE DANO: {} pontos.".format(dano_recebido))
-                som.play_file('som de dano.wav')
-            else:
+            # Percorre todos os slots para ver quem ataca
+            for i in range(1, NUMERO_DE_SLOTS + 1):
+                dano_deste_inimigo = calcular_dano_real_inimigos(turno, i)
                 
-                print(">> Nenhum inimigo em posicao de ataque.")
+                if dano_deste_inimigo > 0:
+                    print("Slot", i, "atacou! Dano: {}".format(dano_deste_inimigo))
+                    dano_total_turno += dano_deste_inimigo
+                    
+                    # Consumo de munição do inimigo
+                    tabuleiro_real[i]['municao'] -= 1
+                    # Atualiza também a memória do robô
+                    if slots_inimigos[i]['tipo'] is not None:
+                        slots_inimigos[i]['municao'] = tabuleiro_real[i]['municao']
+            
+            # Aplica o dano total à vida do Defender
+            if dano_total_turno > 0:
+                defender_vida_atual -= dano_total_turno
+                som.play_file('som de dano.wav')
 
-        # TURNOS PARES (FASE ROBÔ) -> IA AUTOMÁTICA
+        # --- FASE ROBO (TURNOS PARES) ---
         else:
             print("\n>>> [FASE ROBO - IA EM EXECUCAO] <<<")
             
-            # 1. Recuperação Automática de Energia
+            # 1. Regeneração de Energia (Regra do jogo: +50% da atual)
             recup = int(defender_energia_atual * 0.5)
             defender_energia_atual += recup
             if defender_energia_atual > defender_energia_max:
                 defender_energia_atual = defender_energia_max
             
-            print(">> Energia regenerada: +{} (Total: {})".format(recup, defender_energia_atual))
-            
-            # 2. Patrulha/Scan Automático (Turnos específicos)
+            # 2. Scout/Patrulha (Apenas se houver slots desconhecidos)
             if turno in [2, 4, 6, 8, 10, 12]:
-                percorrer_e_mapear(turno)
+                if not todos_os_inimigos_identificados():
+                    print(">> Ainda ha slots desconhecidos. A iniciar scout...")
+                    percorrer_e_mapear(turno)
+                else:
+                    print(">> Scout desnecessario (Tudo identificado).")
             
-            # 3. Decisão da IA Preditiva (Sem perguntas ao utilizador)
+            # 3. Decisão da IA (Chama o "Cérebro" comentado anteriormente)
             decisao, alvo, detalhe = decidir_jogada_IA(turno)
             
+            # Executa a decisão da IA
             if decisao == "ATACAR":
                 print(">> IA DECIDIU: Atacar Slot {} com arma {}".format(alvo, detalhe))
                 executar_ataque_manual_fisico(alvo, detalhe)
@@ -866,22 +814,19 @@ def turnos_do_jogo():
                 usar_cura(alvo)
             
             else:
-                print(">> IA DECIDIU: Passar turno (Acumular energia/Seguranca).")
+                print(">> IA DECIDIU: Passar turno.")
 
-        # --- VERIFICAÇÃO DE FIM DE JOGO ---
+        # --- GAME OVER CHECK ---
         if defender_vida_atual <= 0:
-            print("\n" + "X"*40)
-            print("      GAME OVER - O ROBO FOI DESTRUIDO")
-            print("X"*40)
+            print("GAME OVER")
             som.play_file('robo morte.wav')
             break
             
         print("\n--- Turno {} concluido. ---".format(turno))
 
+    # Vitória (Se sobreviveu aos 13 turnos com vida > 0)
     if defender_vida_atual > 0:
-        print("\n" + "#"*40)
-        print("      VITORIA - MISSAO CUMPRIDA!")
-        print("#"*40)
+        print("VITORIA - MISSAO CUMPRIDA!")
         som.play_file('Vitoria.wav')
 
 
@@ -905,9 +850,8 @@ def calcular_dano_real_inimigos(turno_atual, slot_id):
     total_dano = 0
     inimigo = tabuleiro_real[slot_id]
     
-    # REGRA: Só ataca se a vida for > 0 E se o turno em que ele entrou 
-    # for MENOR que o turno atual (ou seja, já passou pelo menos 1 turno).
-    if inimigo['vida_atual'] > 0 and inimigo['turno_ataque'] < turno_atual:
+    # Ataca se estiver vivo, identificado e com munição
+    if inimigo['vida_atual'] > 0 and inimigo['tipo'] != "Vazio" and inimigo['municao'] > 0:
         stats = INIMIGOS[inimigo['tipo']]
         ratio = inimigo['vida_atual'] / stats['vida']
         total_dano = int(stats['forca'] * ratio)
@@ -954,31 +898,48 @@ def aplicar_dano_ao_inimigo(slot_id, dano):
 
 
 # Função principal da IA para decidir a jogada do robô
+# Lógica: Prioriza eliminar ameaças letais. Se não for possível, tenta curar.
+# Se a morte for certa, ataca para causar o máximo de dano antes de morrer.
 def decidir_jogada_IA(turno_atual):
-    # 1. Encontrar o melhor alvo
     alvo = selecionar_melhor_alvo()
+    ameaca_total = calcular_ameaca_total_no_tabuleiro(turno_atual)
     
+    # 1. TÁTICA OFENSIVA DE SOBREVIVÊNCIA
+    # Verifica se atacar um inimigo específico reduz o dano recebido o suficiente para sobreviver ao turno.
     if alvo != -1:
-        # 2. Escolher a arma para esse alvo
         arma = escolher_arma_ideal(alvo)
-        
         if arma != -1:
-            # 3. Validar se o ataque é seguro 
+            # Simula o turno: "Se eu matar este inimigo, eu sobrevivo?"
             if verificar_seguranca_ataque(alvo, arma, turno_atual):
+                print(">> IA: Ataque Tatico detetado. Destruir alvo garante sobrevivencia!")
                 return ("ATACAR", alvo, arma)
-    
-    # 4. Se não há alvo, não há energia ou o ataque é perigoso: Tentar Curar
+
+    # 2. TÁTICA DEFENSIVA (CURA)
+    # Se o ataque não garante a sobrevivência, verifica se a cura consegue com que o robo sobreviva ao dano.
     nivel_cura = avaliar_necessidade_cura(turno_atual)
     if nivel_cura != -1:
-        return ("CURAR", nivel_cura, None)
-        
-    # 5. Último recurso: Ataque Kamikaze (Melhor morrer a lutar do que parado)
-    if alvo != -1 and defender_energia_atual >= 50:
-        return ("ATACAR", alvo, 3)
+        # Verifica se a cura selecionada cobre a ameaça total dos inimigos
+        recuperacao = 400 if nivel_cura == 3 else 200 if nivel_cura == 2 else 100
+        if (defender_vida_atual + recuperacao) >= ameaca_total:
+            print(">> IA: Cura necessaria e suficiente para sobreviver ao turno.")
+            return ("CURAR", nivel_cura, None)
+
+    # 3. MODO KAMIKAZE (Último Recurso)
+    # Se nem atacar nem curar salvam o robô, ataca o melhor alvo para levar alguém com ele.
+    if alvo != -1:
+        arma = escolher_arma_ideal(alvo)
+        if arma != -1:
+            print(">> IA: MORTE INEVITAVEL detetada. Iniciando modo KAMIKAZE!")
+            return ("ATACAR", alvo, arma)
+            
+    # 4. POUPANÇA DE ENERGIA
+    # Se não há ameaças imediatas ou recursos para agir, passa o turno.
     return ("PASSAR", None, None)
 
 
-#Heurística para selecionar o melhor alvo, esta decide qual o inimigo mais perigoso no tabuleiro e retorna o slot desse inimigo
+# Heurística para selecionar o melhor alvo
+# Calcula um 'Score' para cada inimigo baseada no Dano Potencial e na Prioridade do tipo.
+# Retorna o ID do slot do inimigo mais perigoso.
 def selecionar_melhor_alvo():
     melhor_alvo = -1
     melhor_valor = -1
@@ -986,8 +947,12 @@ def selecionar_melhor_alvo():
     for i in range(1, NUMERO_DE_SLOTS + 1):
         info = slots_inimigos[i]
         
-        # SÓ ATACA SE O INIMIGO ESTIVER PRONTO
+        # Ignora slots vazios, desconhecidos ou inimigos já mortos
         if info['tipo'] is None or info['tipo'] == "Vazio" or info['vida_atual'] <= 0:
+            continue
+            
+        # Ignora inimigos que já não têm munição (não representam ameaça)
+        if info['municao'] <= 0:
             continue
             
         tipo = info['tipo']
@@ -995,110 +960,107 @@ def selecionar_melhor_alvo():
         
         multiplicador_urgencia = 1.5 
         
+        # Cálculo do Perigo:
+        # 1. Quanto dano ele causa agora? (Força * % de Vida)
         ratio = info['vida_atual'] / stats['vida']
         dano_potencial = stats['forca'] * ratio
+        # 2. Qual a prioridade fixa deste tipo de inimigo? (Artilharia > Infantaria > Tanque)
         prioridade = PRIORIDADES[tipo]
-        
+        # Fórmula de Pontuação (Dano pesa mais que a prioridade fixa)
         valor = (dano_potencial * 20) + (prioridade * 15)
-        valor *= multiplicador_urgencia # Dá peso ao facto de ele já estar pronto para atacar
+        valor *= multiplicador_urgencia 
         
         if valor > melhor_valor:
             melhor_valor = valor
             melhor_alvo = i
+            print("IA: Selecionado Slot {} como melhor alvo".format(melhor_alvo))
             
     return melhor_alvo
 
 
-# Heurística para escolher a arma ideal para um alvo específico, esta foca-se na eficiência energética
+
+# Heurística para escolher a arma ideal (Eficiência Energética)
+# Objetivo: Matar o inimigo gastando o minimo de energia possível.
+# Evita usar arma forte em inimigo fraco.
 def escolher_arma_ideal(slot_id):
     vida_alvo = slots_inimigos[slot_id]['vida_atual']
     
-    # Tenta matar com o mínimo de energia, ou usa o mais forte que puder pagar
+    # 1. Tenta matar com SOM (Custo 50) se o inimigo tiver pouca vida
     if vida_alvo <= 50 and defender_energia_atual >= 50: 
         return 3 # Som
+        
+    # 2. Tenta matar com TOQUE (Custo 150) se vida média
     if vida_alvo <= 100 and defender_energia_atual >= 150: 
         return 2 # Toque
+        
+    # 3. Se tem muita vida, usa GRUA (Custo 300) se houver energia
     if defender_energia_atual >= 300: 
         return 1 # Grua
+        
+    # 4. Se não tem energia para a arma ideal, usa a mais forte disponível
     if defender_energia_atual >= 150: 
         return 2 # Toque 
     if defender_energia_atual >= 50: 
         return 3 # Som 
     
-    return -1 # Sem energia para atacar
+    return -1 # Sem energia para qualquer ataque
 
 
-# Heurística para verificar se o ataque é seguro para o robô
-# 1. calcula o dano total que o robô está a receber agora
-# 2. calcula o dano que o robô receberia depois do ataque
-# 3. decide o que fazer, se o dano depois do ataque for menor que a vida atual, é seguro atacar
+# Heurística de Simulação de Risco
+# Verifica se vale a pena atacar:
+# 1. Calcula quanto dano vou receber se não fizer nada.
+# 2. Calcula quanto dano vou receber se atacar este inimigo (ele fica mais fraco ou morre).
+# 3. Retorna True apenas se o robô sobreviver após realizar este ataque.
 def verificar_seguranca_ataque(slot_id, arma_id, turno_atual):
-    # Mapeia o dano da arma
+    # Identifica o dano base da arma escolhida
     key_arma = 'grua' if arma_id == 1 else 'toque' if arma_id == 2 else 'som'
     dano_previsto = ATAQUES[key_arma]['dano']
     
+    # Cenário A: Não faço nada (Ameaça total atual)
     dano_total_agora = calcular_ameaca_total_no_tabuleiro(turno_atual)
+    
+    # Cenário B: Eu ataco
     dano_inimigo_antes = calcular_dano_real_inimigos(turno_atual, slot_id)
     dano_inimigo_depois = prever_dano_apos_ataque(slot_id, dano_previsto)
     
-    # Simulação: Dano total diminuído pela redução de vida deste alvo específico
+    # O dano final será a ameaça total MENOS a diferença que o meu ataque causou
+    # Ex: Se o inimigo ia dar 500 dano e agora dá 0 (morreu), poupei 500 de vida.
     dano_final_previsto = dano_total_agora - (dano_inimigo_antes - dano_inimigo_depois)
     
+    # Retorna Verdadeiro se a vida restante for maior que o dano previsto
     return defender_vida_atual > dano_final_previsto
 
 
-# Heurística para avaliar se o robô precisa de se curar
+# Heurística para avaliar necessidade de cura
+# Decide curar se:
+# a) A ameaça dos inimigos for maior que a minha vida atual (Risco de Morte).
+# b) A vida atual for muito baixa (< 15%), independentemente dos inimigos (Precaução).
 def avaliar_necessidade_cura(turno_atual):
     ameaca_total = calcular_ameaca_total_no_tabuleiro(turno_atual)
     
-    # Se o perigo for alto ou a vida estiver crítica
+    # Verifica condição de perigo ou vida crítica
     if ameaca_total >= defender_vida_atual or defender_vida_atual < (defender_vida_max * 0.15):
-        # Tenta a maior cura possível de acordo com a energia disponível
+        # Seleciona a cura mais potente que a energia atual permite
         if defender_energia_atual >= 400: 
-            return 3 # Grande
+            return 3 # Grande (400 HP)
         if defender_energia_atual >= 300: 
-            return 2 # Média
+            return 2 # Média (200 HP)
         if defender_energia_atual >= 200: 
-            return 1 # Pequena
+            return 1 # Pequena (100 HP)
         
-    return -1 # Não precisa ou não pode curar
-
-
-# Função para sortear inimigos com dados
-def sortear_inimigos_com_dados():
-    global tabuleiro_real
-    print("\n--- CONFIGURACAO DO TABULEIRO (Sorteio Manual) ---")
-    
-    for slot_atual in range(1, 7):        
-        dado_tipo = random.randint(1, 6)
-        tipo = "Tanque" if dado_tipo <= 2 else "Artilharia" if dado_tipo <= 4 else "Infantaria"
-        
-        # Turnos ímpares conforme a tua regra: 1, 3, 5...
-        dado_turno = (random.randint(1, 6) * 2) - 1
-        
-        tabuleiro_real[slot_atual]['tipo'] = tipo
-        tabuleiro_real[slot_atual]['vida_atual'] = INIMIGOS[tipo]['vida']
-        tabuleiro_real[slot_atual]['turno_ataque'] = dado_turno
-
-        # O robô imprime para ti, mas a IA dele não lê esta variável
-        print("Slot", slot_atual, ":", tipo, "(Entra no Turno", dado_turno, ")")
+    return -1 # Não precisa de cura ou não tem energia suficiente
 
 
 # MAIN
 def main():
-    sortear_inimigos_com_dados()
+    confirmar_inicialização()
     turnos_do_jogo()
-    #turnos_do_jogo()
-    # Pergunta qual slot atacar
-    
-    # Simulação: Vamos atacar o Slot 3
-    # No futuro podes usar o input() para escolher
-    
+
+    #Funções para debugs
     #usar_som()
     
     #verificar_flancos_com_gyro()
-    #som.play_file("cbaec71a.wav") #play ao som do max verstappen
-    #som.play_file("Madeira-Mix-_h_LHYlsr4vI_.wav") #play ao som do madeira mix
+
     
     #confirmar_inicialização() #confirma a inicialização do robo
     #turnos_do_jogo() #inicia os turnos do jogo, podem tirar isto para ser mais fácil testar o tabuleiro

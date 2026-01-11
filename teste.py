@@ -1,26 +1,32 @@
 import random
 import time
 
-# --- CONSTANTES ---
-DEFENDER_VIDA_MAX = 750
+# --- CONSTANTES IGUAIS AO MAIN.PY ---
+DEFENDER_VIDA_MAX = 750     # Ajustado para 550 conforme recomendado
 DEFENDER_ENERGIA_MAX = 500
 
+# Dados dos Ataques (Indices: 0=Grua, 1=Toque, 2=Som)
+# Nota: No main.py Grua é 1, Toque 2, Som 3. Aqui ajustamos para indices de lista 0,1,2.
 ATAQUES_DANO = [200, 100, 50]
 ATAQUES_CUSTO = [300, 150, 50]
 
+# Dados das Curas (Indices: 0=Cura1, 1=Cura2, 2=Cura3)
 CURAS_RECUPERA = [100, 200, 400]
 CURAS_CUSTO = [200, 300, 400]
 
+# Dados dos Inimigos (Indices: 0=Tanque, 1=Artilharia, 2=Infantaria)
 INIMIGOS_FORCA = [200, 500, 100]
-INIMIGOS_ATAQUES = [2, 1, 3]
 INIMIGOS_VIDA = [200, 50, 100]
-INIMIGOS_PRIORIDADE = [1, 3, 2]
+INIMIGOS_ATAQUES = [2, 1, 3] # Municao
+INIMIGOS_PRIORIDADE = [1, 3, 2] # Tanque=1, Artilharia=3, Infantaria=2
 
 NUM_SLOTS = 6
 MAX_TURNOS = 13
 
-# --- FUNÇÕES AUXILIARES ---
+# --- GESTÃO DE SLOTS ---
 def criar_slots_vazios():
+    # Estrutura do Slot na Simulação:
+    # [0:Tipo, 1:VidaMax, 2:VidaAtual, 3:TurnoEntrada, 4:Municao, 5:JaEntrou?, 6:NaoUsado]
     slots = []
     for i in range(NUM_SLOTS):
         slots.append([-1, 0, 0, 0, 0, 0, 0])
@@ -29,301 +35,219 @@ def criar_slots_vazios():
 def sortear_inimigos(slots):
     for i in range(NUM_SLOTS):
         dado_tipo = random.randint(1, 6)
+        # Mapeamento do main.py: 1-2 Tanque, 3-4 Artilharia, 5-6 Infantaria
         if dado_tipo <= 2:
-            tipo = 0
+            tipo = 0 # Tanque
         elif dado_tipo <= 4:
-            tipo = 1
+            tipo = 1 # Artilharia
         else:
-            tipo = 2
+            tipo = 2 # Infantaria
             
         dado_bruto = random.randint(1, 6)
         turno_entrada = (dado_bruto * 2) - 1
         
         slots[i][0] = tipo
         slots[i][1] = INIMIGOS_VIDA[tipo]
+        slots[i][2] = 0 # Vida começa a 0 (so aparece quando entra)
         slots[i][3] = turno_entrada
-        slots[i][4] = INIMIGOS_ATAQUES[tipo]
-        slots[i][2] = 0
-        slots[i][5] = 0
+        slots[i][4] = INIMIGOS_ATAQUES[tipo] # Carrega Municao
+        slots[i][5] = 0 # Flag 'JaEntrou' falsa
         slots[i][6] = 0
 
-def calcular_dano_potencial(slots):
-    """Calcula o dano TOTAL que o robô vai levar neste turno"""
-    dano_total = 0
+# --- LÓGICA DE DANO DO MAIN.PY ---
+def calcular_ameaca_total(slots, turno_atual):
+    total = 0
     for i in range(NUM_SLOTS):
         slot = slots[i]
-        if (slot[6] == 1 and slot[2] > 0 and 
-            slot[4] > 0 and slot[0] != -1 and 
-            slot[2] != -999 and slot[5] == 1):
-            
+        # Regra Main.py: Vivo E Turno de entrada < Atual E Municao > 0
+        if slot[5] == 1 and slot[2] > 0 and slot[3] < turno_atual and slot[4] > 0:
             tipo = slot[0]
-            ratio = slot[2] / slot[1] if slot[1] > 0 else 1
+            ratio = slot[2] / slot[1]
             dano = int(INIMIGOS_FORCA[tipo] * ratio)
-            dano_total += dano
-    return dano_total
+            total += dano
+    return total
 
-def calcular_dano_inimigo_especifico(slot):
-    """Calcula quanto dano UM inimigo específico vai dar agora"""
-    if (slot[6] == 1 and slot[2] > 0 and 
-        slot[4] > 0 and slot[0] != -1 and 
-        slot[2] != -999 and slot[5] == 1):
-        
-        tipo = slot[0]
-        ratio = slot[2] / slot[1] if slot[1] > 0 else 1
-        return int(INIMIGOS_FORCA[tipo] * ratio)
-    return 0
-
-def prever_dano_apos_ataque(slot, dano_do_meu_ataque):
-    """
-    Simula o futuro: Quanto dano esse inimigo vai dar DEPOIS de levar meu tiro?
-    """
-    if slot[4] <= 0: return 0 # Sem munição não dá dano
-    
-    vida_atual = slot[2]
-    vida_futura = vida_atual - dano_do_meu_ataque
-    
+def prever_dano_inimigo_especifico(slot, dano_recebido):
+    # Simula quanto dano o inimigo faria se levasse 'dano_recebido'
+    vida_futura = slot[2] - dano_recebido
     if vida_futura <= 0:
-        return 0 # Inimigo morto não dá dano
-        
+        return 0
+    
     tipo = slot[0]
-    vida_max = slot[1]
-    
-    ratio_futuro = vida_futura / vida_max
-    dano_futuro = int(INIMIGOS_FORCA[tipo] * ratio_futuro)
-    
-    return dano_futuro
+    ratio = vida_futura / slot[1]
+    return int(INIMIGOS_FORCA[tipo] * ratio)
 
-def contar_inimigos_perigosos(slots):
-    contador = 0
-    for i in range(NUM_SLOTS):
-        slot = slots[i]
-        if (slot[6] == 1 and slot[2] > 0 and 
-            slot[4] > 0 and slot[0] != -1 and 
-            slot[2] != -999 and slot[5] == 1):
-            contador += 1
-    return contador
+# --- HEURÍSTICAS DO MAIN.PY ---
 
-# --- ESTRATÉGIA INTELIGENTE ---
-def decidir_acao_inteligente(vida_atual, energia_atual, slots):
-    """
-    Lógica: Tenta atacar primeiro. MAS, calcula se o ataque garante a sobrevivência.
-    Se atacar resultar em morte, cancela o ataque e troca para cura.
-    """
-    
-    # 1. ESCOLHER O MELHOR ALVO (Lógica de Pontuação)
+def selecionar_melhor_alvo(slots):
     melhor_alvo = -1
     melhor_valor = -1
     
-    # Primeiro checa Artilharia (Prioridade Absoluta)
     for i in range(NUM_SLOTS):
         slot = slots[i]
-        if slot[0] == 1 and slot[2] > 0 and slot[5] == 1 and slot[4] > 0:
+        
+        # Ignorar se nao esta presente, morto ou SEM MUNICAO
+        if slot[5] == 0 or slot[2] <= 0 or slot[4] <= 0:
+            continue
+            
+        tipo = slot[0]
+        stats_vida = slot[1]
+        stats_forca = INIMIGOS_FORCA[tipo]
+        prioridade = INIMIGOS_PRIORIDADE[tipo]
+        
+        ratio = slot[2] / stats_vida
+        dano_potencial = stats_forca * ratio
+        
+        # Fórmula exata do main.py
+        valor = (dano_potencial * 20) + (prioridade * 15)
+        valor *= 1.5 # Multiplicador urgencia
+        
+        if valor > melhor_valor:
+            melhor_valor = valor
             melhor_alvo = i
-            melhor_valor = 9999 # Valor altíssimo para garantir
-            break
             
-    # Se não achou Artilharia, usa a fórmula padrão
-    if melhor_alvo == -1:
-        for i in range(NUM_SLOTS):
-            slot = slots[i]
-            if (slot[5] == 1 and slot[2] > 0 and slot[0] != -1 and slot[4] > 0):
-                tipo = slot[0]
-                ratio = slot[2] / slot[1] if slot[1] > 0 else 1
-                dano_prox = INIMIGOS_FORCA[tipo] * ratio
-                eficiencia = (1.0 - ratio)
-                prioridade = INIMIGOS_PRIORIDADE[tipo]
-                
-                valor = (dano_prox * 20) + (eficiencia * 70) + (prioridade * 15) + (slot[4] * 5)
-                
-                if valor > melhor_valor:
-                    melhor_valor = valor
-                    melhor_alvo = i
+    return melhor_alvo
 
-    # --- SIMULAÇÃO DE SOBREVIVÊNCIA ---
-    acao_ataque = None
-    pode_atacar_com_seguranca = False
-    
-    if melhor_alvo != -1:
-        # Escolher arma
-        vida_alvo = slots[melhor_alvo][2]
-        arma_idx = 0
+def escolher_arma_ideal(energia_atual, vida_alvo):
+    # Logica Finisher do main.py
+    if vida_alvo <= 50 and energia_atual >= 50:
+        return 2 # Som
+    if vida_alvo <= 100 and energia_atual >= 150:
+        return 1 # Toque
         
-        if vida_alvo <= 50 and energia_atual >= 50:
-            arma_idx = 2
-        elif vida_alvo <= 100 and energia_atual >= 150:
-            arma_idx = 1
-        elif energia_atual >= 300:
-            arma_idx = 0
-        else:
-             # Sem energia para a arma ideal, tenta a mais fraca disponível
-            if energia_atual >= 150: arma_idx = 1
-            elif energia_atual >= 50: arma_idx = 2
-            else: arma_idx = -1 # Sem energia nenhuma
-            
-        if arma_idx != -1:
-            dano_arma = ATAQUES_DANO[arma_idx]
-            
-            # --- O PULO DO GATO: PREVISÃO DE FUTURO ---
-            dano_total_atual = calcular_dano_potencial(slots)
-            
-            # Quanto esse inimigo ia me bater?
-            dano_inimigo_antes = calcular_dano_inimigo_especifico(slots[melhor_alvo])
-            
-            # Quanto ele vai me bater DEPOIS do meu tiro?
-            dano_inimigo_depois = prever_dano_apos_ataque(slots[melhor_alvo], dano_arma)
-            
-            # Novo dano total que vou receber
-            dano_reduzido = dano_inimigo_antes - dano_inimigo_depois
-            dano_final_recebido = dano_total_atual - dano_reduzido
-            
-            # VEREDITO: Eu sobrevivo se atacar?
-            if vida_atual > dano_final_recebido:
-                # Sim, sobrevivo! O ataque é seguro.
-                return (1, melhor_alvo, arma_idx)
-            else:
-                # Não, eu morro mesmo atacando.
-                # O ataque não reduz o dano o suficiente.
-                # ABORTAR ATAQUE -> TENTAR CURAR
-                pode_atacar_com_seguranca = False
-        else:
-             # Sem energia para atacar
-             pass
+    # Logica Disponibilidade
+    if energia_atual >= 300: return 0 # Grua
+    if energia_atual >= 150: return 1 # Toque
+    if energia_atual >= 50: return 2 # Som
+    
+    return -1 # Sem energia
 
-    # --- BLOCO DE CURA (Plano B) ---
-    # Só chega aqui se não atacou (ou porque não tinha alvo, ou sem energia, ou porque IA morrer)
+def verificar_seguranca_ataque(slots, alvo_idx, arma_idx, vida_atual, turno_atual):
+    dano_arma = ATAQUES_DANO[arma_idx]
     
-    dano_potencial = calcular_dano_potencial(slots)
+    dano_total_agora = calcular_ameaca_total(slots, turno_atual)
     
-    # Cura de Emergência (Prioridade máxima aqui)
-    if dano_potencial >= vida_atual:
-         # Tenta a cura mais forte possível
-        if energia_atual >= 400: return (2, 3)
-        elif energia_atual >= 300: return (2, 2)
-        elif energia_atual >= 200: return (2, 1)
+    # Dano que este inimigo especifico causa AGORA
+    slot = slots[alvo_idx]
+    ratio_atual = slot[2] / slot[1]
+    dano_inimigo_antes = int(INIMIGOS_FORCA[slot[0]] * ratio_atual)
+    
+    # Dano que causaria DEPOIS do ataque
+    dano_inimigo_depois = prever_dano_inimigo_especifico(slot, dano_arma)
+    
+    # Simula o turno
+    dano_final_previsto = dano_total_agora - (dano_inimigo_antes - dano_inimigo_depois)
+    
+    return vida_atual > dano_final_previsto
+
+def avaliar_necessidade_cura(vida_atual, energia_atual, ameaca_total):
+    # Regra main.py: Ameaca >= Vida OU Vida < 15%
+    if ameaca_total >= vida_atual or vida_atual < (DEFENDER_VIDA_MAX * 0.15):
+        if energia_atual >= 400: return 2 # Grande
+        if energia_atual >= 300: return 1 # Media
+        if energia_atual >= 200: return 0 # Pequena
+    return -1
+
+# --- CÉREBRO DA IA (REPLICA decidir_jogada_IA) ---
+def decidir_jogada_ia_main(vida, energia, slots, turno):
+    
+    # 1. Encontrar melhor alvo
+    alvo = selecionar_melhor_alvo(slots)
+    
+    if alvo != -1:
+        # 2. Escolher arma
+        arma = escolher_arma_ideal(energia, slots[alvo][2])
         
-    # Cura Preventiva (se sobrou energia e não atacou)
-    if dano_potencial >= vida_atual:
-        if energia_atual >= 400: return (2, 3)
-        elif energia_atual >= 300: return (2, 2)
-        elif energia_atual >= 200: return (2, 1)
+        if arma != -1:
+            # 3. Validar Seguranca
+            if verificar_seguranca_ataque(slots, alvo, arma, vida, turno):
+                return (1, alvo, arma) # Acao 1: Atacar
+    
+    # 4. Tentar Curar
+    ameaca = calcular_ameaca_total(slots, turno)
+    cura = avaliar_necessidade_cura(vida, energia, ameaca)
+    if cura != -1:
+        return (2, cura) # Acao 2: Curar
+        
+    # 5. Kamikaze
+    if alvo != -1 and energia >= 50:
+        return (1, alvo, 2) # Ataque Som (Kamikaze)
+        
+    return (3, 0) # Acao 3: Passar
 
-    # 2. MANUTENÇÃO: Se não vou morrer, curo-me se a vida estiver muito baixa
-    # Usei elif para ligar ao bloco anterior
-    elif vida_atual < DEFENDER_VIDA_MAX * 0.15:  # Subi de 0.15 para 0.3 para ser mais seguro
-        if energia_atual >= 400: return (2, 3)
-        elif energia_atual >= 300: return (2, 2)
-        elif energia_atual >= 200: return (2, 1)
-
-    # Se a cura não salvou (sem energia) ou não precisava, e o ataque era suicida...
-    # Tenta atacar de qualquer jeito (Kamikaze final) se tiver energia, melhor morrer lutando
-    if melhor_alvo != -1 and energia_atual >= 50:
-         # Recalcula arma simples
-         return (1, melhor_alvo, 2) 
-
-    return (3, 0)
-
-# --- SIMULAÇÃO ---
-def executar_simulacao_unica_sem_log():
+# --- SIMULAÇÃO ÚNICA ---
+def executar_simulacao():
     vida = DEFENDER_VIDA_MAX
     energia = DEFENDER_ENERGIA_MAX
     slots = criar_slots_vazios()
-    
-    turnos = 0
-    inimigos_destruidos = 0
-    dano_causado = 0
-    dano_recebido = 0
-    curas_usadas = 0
-    
     sortear_inimigos(slots)
     
     for turno in range(1, MAX_TURNOS + 1):
-        turnos = turno
         
-        # FASE INIMIGA (turnos ímpares)
-        if turno & 1:
-            dano_total = 0
-            for i in range(NUM_SLOTS):
-                slot = slots[i]
-                if turno == slot[3] and slot[6] == 0:
-                    if slot[0] != -1: slot[2] = slot[1]
-                    slot[6] = 1
-                    continue
-                if (slot[6] == 1 and slot[4] > 0 and slot[2] > 0 and slot[0] != -1 and slot[5] == 1):
-                    tipo = slot[0]
-                    ratio = slot[2] / slot[1] if slot[1] > 0 else 1
-                    dano = int(INIMIGOS_FORCA[tipo] * ratio)
-                    slot[4] -= 1
-                    dano_total += dano
+        # FASE INIMIGA (Turnos Impares)
+        if turno % 2 != 0:
+            # 1. Verificar quem entra
+            for s in slots:
+                if s[3] == turno:
+                    s[5] = 1 # Entrou
+                    s[2] = s[1] # Define vida inicial
             
-            if dano_total > 0:
-                vida -= dano_total
-                dano_recebido += dano_total
-        
-        # FASE ROBÔ (turnos pares)
+            # 2. Calcular Dano e Gastar Municao
+            dano_turno = 0
+            for s in slots:
+                # Se esta no campo, vivo e tem municao (e nao acabou de entrar neste turno)
+                if s[5] == 1 and s[2] > 0 and s[4] > 0 and s[3] < turno:
+                    ratio = s[2] / s[1]
+                    dano = int(INIMIGOS_FORCA[s[0]] * ratio)
+                    dano_turno += dano
+                    s[4] -= 1 # GASTA MUNICAO
+            
+            vida -= dano_turno
+            if vida <= 0: return 0 # Derrota
+            
+        # FASE ROBO (Turnos Pares)
         else:
-            recup = energia >> 1
+            # 1. Regenerar Energia
+            recup = int(energia * 0.5)
             energia += recup
             if energia > DEFENDER_ENERGIA_MAX: energia = DEFENDER_ENERGIA_MAX
             
-            for i in range(NUM_SLOTS):
-                slot = slots[i]
-                if slot[6] == 1 and slot[5] == 0:
-                    if slot[0] != -1 and slot[2] == 0: slot[2] = slot[1]
-                    slot[5] = 1
+            # 2. Decidir Jogada
+            acao = decidir_jogada_ia_main(vida, energia, slots, turno)
             
-            acao = decidir_acao_inteligente(vida, energia, slots)
-            
-            if acao[0] == 1:
-                slot_idx = acao[1]
-                arma_idx = acao[2]
-                if energia >= ATAQUES_CUSTO[arma_idx]:
-                    energia -= ATAQUES_CUSTO[arma_idx]
-                    dano = ATAQUES_DANO[arma_idx]
-                    slots[slot_idx][2] -= dano
-                    if slots[slot_idx][2] < 0: slots[slot_idx][2] = 0
-                    dano_causado += dano
-            elif acao[0] == 2:
-                cura_idx = acao[1] - 1
-                if energia >= CURAS_CUSTO[cura_idx]:
-                    energia -= CURAS_CUSTO[cura_idx]
-                    vida += CURAS_RECUPERA[cura_idx]
-                    if vida > DEFENDER_VIDA_MAX: vida = DEFENDER_VIDA_MAX
-                    curas_usadas += 1
-        
-        for i in range(NUM_SLOTS):
-            slot = slots[i]
-            if (slot[2] <= 0 and slot[0] != -1 and slot[6] == 1 and slot[2] != -999):
-                inimigos_destruidos += 1
-                slot[2] = -999
-        
-        if vida <= 0: break
-    
-    return (1 if vida > 0 else 0, vida if vida > 0 else 0)
+            if acao[0] == 1: # Atacar
+                idx_alvo, idx_arma = acao[1], acao[2]
+                custo = ATAQUES_CUSTO[idx_arma]
+                dano = ATAQUES_DANO[idx_arma]
+                
+                energia -= custo
+                slots[idx_alvo][2] -= dano # Aplica dano
+                if slots[idx_alvo][2] < 0: slots[idx_alvo][2] = 0
+                
+            elif acao[0] == 2: # Curar
+                idx_cura = acao[1]
+                custo = CURAS_CUSTO[idx_cura]
+                recupera = CURAS_RECUPERA[idx_cura]
+                
+                energia -= custo
+                vida += recupera
+                if vida > DEFENDER_VIDA_MAX: vida = DEFENDER_VIDA_MAX
+                
+    return 1 if vida > 0 else 0 # Vitoria se sobreviveu
 
 # --- SIMULAÇÃO EM MASSA ---
-def executar_simulacoes_massa(num_simulacoes):
-    total_vitorias = 0
-    total_vida = 0
-    for i in range(num_simulacoes):
-        res = executar_simulacao_unica_sem_log()
-        total_vitorias += res[0]
-        total_vida += res[1]
-    
-    return [num_simulacoes, total_vitorias, 0, (total_vitorias/num_simulacoes)*100, total_vida/num_simulacoes]
-
-# --- EXECUÇÃO ---
-if __name__ == "__main__":
-    print("=== TESTE: ESTRATÉGIA PREDITIVA (SIMULAÇÃO DE DANO) ===")
-    print("O robô calcula: 'Se eu atacar, o dano dele diminui. Sobrevivo?'")
-    print("Sim -> Ataca. Não -> Cura.")
-    print()
-    
-    num_testes = 100000
+def executar_teste_massa(n=10000):
+    vitorias = 0
     inicio = time.time()
-    estatisticas = executar_simulacoes_massa(num_testes)
-    fim = time.time()
     
-    print("RESULTADOS:")
-    print("  Vitórias: ",estatisticas[1],"/",num_testes,"(",estatisticas[3],"%")
-    print("  Vida média final: ", estatisticas[4])
-    print("  Tempo: ",fim-inicio,"s")
+    for _ in range(n):
+        vitorias += executar_simulacao()
+        
+    fim = time.time()
+    print("--- RESULTADO (" + str(n) + " Jogos) ---")
+    print("Taxa de Vitoria: " + str((vitorias/n)*100) + "%")
+    print("Tempo: " + str(round(fim-inicio, 2)) + "s")
+
+if __name__ == "__main__":
+    print("A simular com regras do MAIN.PY (750HP + Municao Limitada)...")
+    executar_teste_massa(100000)
